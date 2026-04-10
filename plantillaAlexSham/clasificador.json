@@ -1,0 +1,35 @@
+{
+  "preprocessing": {
+    "unique_category_threshold": 10,
+    "missing_values": "delete",
+    "impute_strategy": "mean",
+    "scaling": "minMax",
+    "text_process": "tf-idf",
+    "sampling": "auto",
+    "drop_features": []
+  },
+  "knn_config": {
+      "k": [-1,1,5,1],
+      "p": [1,2],
+      "weights": ["uniform","distance"],
+      "pares": false
+  },
+  "decision_tree_config": {
+      "criterion": ["gini","entropy"],
+      "max_depth": [-1,4,8,1],
+      "min_samples_split": [2, 5, 10],
+      "min_samples_leaf": [1, 2, 4],
+      "max_features": ["sqrt", "log2"]
+  },
+  "rf_config": {
+      "n_estimators": [50, 100, 150],
+      "max_depth": [5, 10],
+      "min_samples_split": [2, 5, 10],
+      "min_samples_leaf": [1, 2, 4],
+      "bootstrap": [true, false],
+      "max_features": ["sqrt", "log2"]
+  },
+  "test_size": "0.2",
+  "algorithm": "knn",
+  "estimator": "f1_micro"
+}
