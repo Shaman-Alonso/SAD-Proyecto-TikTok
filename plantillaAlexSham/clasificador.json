@@ -5,7 +5,7 @@
     "impute_strategy": "mean",
     "scaling": "minMax",
     "text_process": "tf-idf",
-    "sampling": "auto",
+    "sampling": "none",
     "drop_features": []
   },
   "knn_config": {
