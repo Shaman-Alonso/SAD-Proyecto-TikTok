@@ -1,0 +1,13 @@
+Params,Score
+"{'n_neighbors': 1, 'p': 1, 'weights': 'uniform'}",0.925
+"{'n_neighbors': 1, 'p': 1, 'weights': 'distance'}",0.925
+"{'n_neighbors': 1, 'p': 2, 'weights': 'uniform'}",0.9416666666666668
+"{'n_neighbors': 1, 'p': 2, 'weights': 'distance'}",0.9416666666666668
+"{'n_neighbors': 3, 'p': 1, 'weights': 'uniform'}",0.9333333333333333
+"{'n_neighbors': 3, 'p': 1, 'weights': 'distance'}",0.9416666666666667
+"{'n_neighbors': 3, 'p': 2, 'weights': 'uniform'}",0.95
+"{'n_neighbors': 3, 'p': 2, 'weights': 'distance'}",0.95
+"{'n_neighbors': 5, 'p': 1, 'weights': 'uniform'}",0.95
+"{'n_neighbors': 5, 'p': 1, 'weights': 'distance'}",0.95
+"{'n_neighbors': 5, 'p': 2, 'weights': 'uniform'}",0.9333333333333333
+"{'n_neighbors': 5, 'p': 2, 'weights': 'distance'}",0.95

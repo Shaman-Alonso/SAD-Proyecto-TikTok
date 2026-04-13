@@ -1,0 +1,7 @@
+pandas
+numpy
+colorama
+scikit-learn
+nltk
+imbalanced-learn
+tqdm
