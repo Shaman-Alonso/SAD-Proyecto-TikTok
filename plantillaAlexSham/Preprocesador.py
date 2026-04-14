@@ -1,4 +1,5 @@
 import sys
+import os
 import pandas as pd
 import numpy as np
 import string
@@ -21,6 +22,15 @@ from tqdm import tqdm
 
 
 class DataPreprocessor:
+    """
+    Clase encargada de la limpieza, transformación y balanceo de datos.
+
+    :ivar df_original: Almacena el DataFrame tal cual se carga del archivo CSV.
+    :ivar df: DataFrame de trabajo sobre el que se aplican las transformaciones.
+    :ivar args: Objeto de configuración con parámetros de preprocesamiento.
+    :ivar tools: Diccionario para almacenar objetos ajustados (Scalers, Imputers, Vectorizers).
+    """
+
     def __init__(self, args):
         self.df_original = None
         self.df = None
@@ -29,9 +39,12 @@ class DataPreprocessor:
 
     def __load_data(self, file):
         """
-        Función para cargar los datos de un fichero csv
-        :param file: Fichero csv
-        :return: Datos del fichero
+        Función para cargar los datos de un fichero CSV
+
+        :param file: Dirección al fichero a leer.
+        :type file: str
+        :return: El conjunto de datos original.
+        :rtype: pandas.DataFrame
         """
         try:
             print("\n- Cargando datos...")
@@ -50,10 +63,11 @@ class DataPreprocessor:
         """
         Separa las características del conjunto de datos en características numéricas, de texto y categóricas.
 
-        Returns:
-            numerical_feature (DataFrame): DataFrame que contiene las características numéricas.
-            text_feature (DataFrame): DataFrame que contiene las características de texto.
-            categorical_feature (DataFrame): DataFrame que contiene las características categóricas.
+        :param data: El conjunto de datos del que se sacarán sus features.
+        :type data: pandas.DataFrame
+        :return: Una tupla de 3 elementos:
+                (numerical_feature, text_feature, categorical_feature)
+        :rtype: tuple
         """
         try:
             args = self.args
@@ -85,15 +99,16 @@ class DataPreprocessor:
         """
         Procesa los valores faltantes en los datos según la estrategia especificada en los argumentos.
 
-        Args:
-            numerical_feature (DataFrame): El DataFrame que contiene las características numéricas.
-            categorical_feature (DataFrame): El DataFrame que contiene las características categóricas.
-
-        Returns:
-            None
-
-        Raises:
-            None
+        :param data: El conjunto de datos que se somete al procesamiento de valores faltantes.
+        :type data: pandas.DataFrame
+        :param numerical_feature: El conjunto de features de tipo numérico.
+        :type numerical_feature: pandas.DataFrame
+        :param categorical_feature: El conjunto de features de tipo texto.
+        :type categorical_feature: pandas.DataFrame
+        :param is_Train: Indica si el bloque corresponde al Train. Evita Data Leakage.
+        :type is_Train: bool
+        :return: El conjunto de datos original con los valores faltantos tratados (o no).
+        :rtype: pandas.DataFrame
         """
         try:
             args = self.args
@@ -140,15 +155,14 @@ class DataPreprocessor:
         """
         Rescala las características numéricas en el conjunto de datos utilizando diferentes métodos de escala.
 
-        Args:
-            numerical_feature (DataFrame): El dataframe que contiene las características numéricas.
-
-        Returns:
-            None
-
-        Raises:
-            Exception: Si hay un error al reescalar los datos.
-
+        :param data: El conjunto de datos que se somete al reescalado de valores numéricos.
+        :type data: pandas.DataFrame
+        :param numerical_feature: El conjunto de features de tipo numérico.
+        :type numerical_feature: pandas.DataFrame
+        :param is_Train: Indica si el bloque corresponde al Train. Evita Data Leakage.
+        :type is_Train: bool
+        :return: El conjunto de datos original con las columnas numéricas reescaladas (o no).
+        :rtype: pandas.DataFrame
         """
         try:
             args = self.args
@@ -186,9 +200,14 @@ class DataPreprocessor:
         """
         Convierte las características categóricas en características numéricas utilizando la codificación de etiquetas.
 
-        Parámetros:
-        categorical_feature (DataFrame): El DataFrame que contiene las características categóricas a convertir.
-
+        :param data: El conjunto de datos que se somete a la discretización.
+        :type data: pandas.DataFrame
+        :param categorical_feature: El conjunto de features de tipo texto.
+        :type categorical_feature: pandas.DataFrame
+        :param is_Train: Indica si el bloque corresponde al Train. Evita Data Leakage.
+        :type is_Train: bool
+        :return: El conjunto de datos original con las columnas categoriales discretizadas (o no).
+        :rtype: pandas.DataFrame
         """
         try: #TODO LabelEncoder es más para DT, pero OneHot para KNN, revisar muy mucho
             print("\n- Realizando Label Encoding...")
@@ -213,13 +232,20 @@ class DataPreprocessor:
 
     def __simplify_text(self, data, text_feature):
         """
-        Función que simplifica el texto de una columna dada en un DataFrame. lower,stemmer, tokenizer, stopwords del NLTK....
+        Función que simplifica el texto de una columna dada en un DataFrame.
+            1. Tokenizado
+            2. Minúsculas
+            3. Lematizar
+            4. Eliminar stop words
+            5. Eliminar signos de puntuación
+            6. Ordenar alfabéticamente
 
-        Parámetros:
-        - text_feature: DataFrame - El DataFrame que contiene la columna de texto a simplificar.
-
-        Retorna:
-        None
+        :param data: El conjunto de datos que se somete al simplificado del texto.
+        :type data: pandas.DataFrame
+        :param text_feature: El conjunto de features de tipo texto.
+        :type text_feature: pandas.DataFrame
+        :return: El conjunto de datos original con las columnas de texto simplificadas (o no).
+        :rtype: pandas.DataFrame
         """
         try:
             print("\n- Simplificando el texto...")
@@ -249,9 +275,14 @@ class DataPreprocessor:
         """
         Procesa las características de texto utilizando técnicas de vectorización como TF-IDF o BOW.
 
-        Parámetros:
-        text_feature (pandas.DataFrame): Un DataFrame que contiene las características de texto a procesar.
-
+        :param data: El conjunto de datos que se somete al procesamiento del texto.
+        :type data: pandas.DataFrame
+        :param text_feature: El conjunto de features de tipo texto.
+        :type text_feature: pandas.DataFrame
+        :param is_Train: Indica si el bloque corresponde al Train. Evita Data Leakage.
+        :type is_Train: bool
+        :return: El conjunto de datos original con las columnas de texto sustituidas por las nuevas vectorizadas (o no).
+        :rtype: pandas.DataFrame
         """
         try:
             args = self.args
@@ -287,18 +318,14 @@ class DataPreprocessor:
 
     def __over_under_sampling(self, X_train, y_train):
         """
-        Realiza oversampling o undersampling en los datos de entrenamiento según la estrategia especificada en args.preprocessing["sampling"].
+        Realiza oversampling o undersampling en los datos del Train según la estrategia especificada en args.preprocessing["sampling"].
 
-        Parámetros:
-        - X_train (pd.DataFrame): Matriz de características de entrenamiento.
-        - y_train (pd.Series): Vector de etiquetas de entrenamiento.
-
-        Retorna:
-        - X_train: DataFrame con las características de entrenamiento.
-        - y_train: Serie con las etiquetas de entrenamiento.
-
-        Raises:
-            Exception: Si ocurre algún error al realizar el oversampling o undersampling.
+        :param X_train: Los features del Train.
+        :type X_train: pandas.DataFrame
+        :param y_train: La columna objetivo del Train.
+        :type y_train: pandas.DataFrame
+        :return: Una tupla de los datos del Train tras balancearlos (o no).
+        :rtype: tuple(pandas.DataFrame, pandas.Series)
         """
         try:
             args = self.args
@@ -344,9 +371,10 @@ class DataPreprocessor:
         """
         Elimina las columnas especificadas del conjunto de datos.
 
-        Parámetros:
-        features (list): Lista de nombres de columnas a eliminar.
-
+        :param data: El conjunto de datos que se somete a la eliminación de features.
+        :type data: pd.DataFrame
+        :return: El conjunto de datos sin las columnas especificadas.
+        :rtype: pd.DataFrame
         """
         try:
             args = self.args
@@ -360,6 +388,24 @@ class DataPreprocessor:
             sys.exit(1)
 
     def __procesar_bloque(self, data, is_Train):
+        """
+        Función para preprocesar los datos
+            1. Borrar columnas no necesarias
+            2. Separamos los datos por tipos (Categoriales, numéricos y textos)
+            3. Tratamos missing values (Eliminar y imputar)
+            4. Pasar los datos de categoriales a numéricos
+            5. Reescalamos los datos datos (MinMax, Normalizer, MaxAbsScaler)
+            6. Simplificamos el texto (Normalizar, eliminar stopwords, stemming y ordenar alfabéticamente)
+            7. Tratamos el texto (TF-IDF, BOW)
+            8. Realizamos Oversampling o Undersampling
+
+        :param data: El conjunto de datos que se somete al pipeline de preprocesamiento.
+        :type data: pandas.DataFrame
+        :param is_Train: Indica si el bloque corresponde al Train. Evita Data Leakage.
+        :type is_Train: bool
+        :return: Una tupla de los features (X_data) y la columna objetivo (y_data)
+        :rtype: tuple(pandas.DataFrame, pandas.Series)
+        """
         # Borrar columnas no necesarias
         data = self.__drop_features(data)
 
@@ -391,17 +437,13 @@ class DataPreprocessor:
 
     def __divide_data(self, data):
         """
-        Función que divide los datos en conjuntos de entrenamiento y desarrollo.
+        Función que divide los datos en conjuntos de Train y Dev.
 
-        Parámetros:
-        - data: DataFrame que contiene los datos.
-        - args: Objeto que contiene los argumentos necesarios para la división de datos.
-
-        Retorna:
-        - x_train: DataFrame con las características de entrenamiento.
-        - x_dev: DataFrame con las características de desarrollo.
-        - y_train: Serie con las etiquetas de entrenamiento.
-        - y_dev: Serie con las etiquetas de desarrollo.
+        :param data: El conjunto de datos que se somete a la división Train/Dev
+        :type data: pandas.DataFrame
+        :return: Una tupla de 4 elementos:
+                (X_train, y_train, X_dev, y_dev)
+        :rtype: tuple
         """
         # Sacamos la columna a predecir
         try:
@@ -421,20 +463,53 @@ class DataPreprocessor:
             print(e)
             sys.exit(1)
 
+    def __save_debug_data(self, X_1, y_1, X_2=None, y_2=None, is_Test=False):
+        """
+        Exporta los conjuntos de datos procesados a ficheros CSV.
+        Detecta automáticamente si se trata de un flujo de Test o de Train/Dev.
+
+        :param X_1: Características del primer bloque (X_train o X_test).
+        :type X_1: pandas.DataFrame
+        :param y_1: Objetivo del primer bloque (y_train o y_test).
+        :type y_1: pandas.Series
+        :param X_2: Características del segundo bloque (X_dev), opcional.
+        :type X_2: pandas.DataFrame
+        :param y_2: Objetivo del segundo bloque (y_dev), opcional.
+        :type y_2: pandas.Series
+        :param is_Test: Booleano para definir el nombre de los archivos de salida.
+        :type is_Test: bool
+        """
+        try:
+            if not os.path.exists('output'):
+                os.makedirs('output')
+
+            if is_Test:
+                print(Fore.MAGENTA + "- [Debug] Exportando procesado de Test..." + Fore.RESET)
+                test = pd.concat([X_1, y_1], axis=1)
+                test.to_csv('output/3-test-processed.csv', index=False)
+            else:
+                print(Fore.MAGENTA + "- [Debug] Exportando procesado de Train y Dev..." + Fore.RESET)
+                train = pd.concat([X_1, y_1], axis=1)
+                dev = pd.concat([X_2, y_2], axis=1)
+                train.to_csv('output/1-train-processed.csv', index=False)
+                dev.to_csv('output/2-dev-processed.csv', index=False)
+
+            print(Fore.GREEN + "\tArchivos de debug guardados con éxito" + Fore.RESET)
+        except Exception as e:
+            print(Fore.RED + f"\tError al guardar archivos de debug: {e}" + Fore.RESET)
+
     def preprocesar_datos(self, is_TrainDev):
         """
-        Función para preprocesar los datos
-            1. Separamos los datos por tipos (Categoriales, numéricos y textos)
-            2. Tratamos missing values (Eliminar y imputar)
-            3. Pasar los datos de categoriales a numéricos
-            4. Reescalamos los datos datos (MinMax, Normalizer, MaxAbsScaler)
-            5. Simplificamos el texto (Normalizar, eliminar stopwords, stemming y ordenar alfabéticamente)
-            6. Tratamos el texto (TF-IDF, BOW)
-            7. Realizamos Oversampling o Undersampling
-            8. Borrar columnas no necesarias
-        :param data: Datos a preprocesar
-        :return: Datos preprocesados y divididos en train y test
+        Maneja el flujo principal de carga y preprocesamiento de los datos.
+        :param is_TrainDev: Indica si estamos en Entrenamiento (True) o Evaluación (False)
+        :type is_TrainDev: bool
+        :return: Si is_TrainDev es True, devuelve una tupla de 4 elementos:
+                (X_train, y_train, X_dev, y_dev)
+                Si is_TrainDev es False, devuelve una tupla de 2 elementos:
+                (X_test, y_test).
+        :rtype: tuple
         """
+
         #Por comodidad, cargamos el df y lo copiamos (más seguro contra Data Leakage)
         args = self.args
         self.df_original = self.__load_data(args.file)
@@ -461,12 +536,14 @@ class DataPreprocessor:
 
             #Para comprobar el preproceso
             if args.debug:
-                train = pd.concat([X_train, y_train], axis=1)
-                dev = pd.concat([X_dev, y_dev], axis=1)
-                train.to_csv('output/1-train-processed.csv', index=False)
-                dev.to_csv('output/2-dev-processed.csv', index=False)
+                self.__save_debug_data(X_train, y_train, X_dev, y_dev, is_Test=False)
 
             return X_train, y_train, X_dev, y_dev
         else: #Test
             X_test, y_test = self.__procesar_bloque(self.df, False)
+
+            # Para comprobar el preproceso
+            if args.debug:
+                self.__save_debug_data(X_test, y_test, is_Test=False)
+
             return X_test, y_test
