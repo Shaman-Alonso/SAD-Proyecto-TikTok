@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ## Estructura del Proyecto
 
-- ScriptEntrenar.py &rarr; Entrenamiento del modelo
+- Main.py &rarr; Entrenamiento del modelo
 - ScriptEvaluar.py &rarr; Predicción con modelo entrenado
 - clasificador.json &rarr; Configuración del modelo
 - requirements.txt &rarr; Dependencias
@@ -51,10 +51,10 @@ pip install -r requirements.txt
 ### Entrenamiento
 
 ```bash
-python ScriptEntrenar.py --help
+python Main.py --help
 === Clasificador ===
 
-usage: ScriptEntrenar.py [-h] -f FILE -p PREDICTION [-c CPU] [-v] [--debug]
+usage: Main.py [-h] -f FILE -p PREDICTION [-c CPU] [-v] [--debug]
 
 Practica de algoritmos de clasificación de datos.
 
@@ -87,13 +87,13 @@ optional arguments:
 ### Entrenamiento básico
 
 ```bash
-python ScriptEntrenar.py -f dataset.csv -p columna_objetivo
+python Main.py -f dataset.csv -p columna_objetivo
 ```
 
 ### Entrenamiento avanzado
 
 ```bash
-python ScriptEntrenar.py -f dataset.csv -p columna_objetivo -c 4 -v --debug
+python Main.py -f dataset.csv -p columna_objetivo -c 4 -v --debug
 ```
 
 ### Predicción

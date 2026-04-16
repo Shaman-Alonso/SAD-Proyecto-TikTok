@@ -4,10 +4,12 @@
     "missing_values": "delete",
     "impute_strategy": "mean",
     "scaling": "minMax",
+    "cat2num": "oneHot",
     "text_process": "tf-idf",
-    "sampling": "none",
+    "sampling": "oversampling",
     "drop_features": []
   },
+  
   "knn_config": {
       "k": [-1,1,5,1],
       "p": [1,2],
@@ -29,7 +31,9 @@
       "bootstrap": [true, false],
       "max_features": ["sqrt", "log2"]
   },
-  "test_size": "0.2",
+
+  "test_size": "0.15",
+  "dev_size": "0.15",
   "algorithm": "knn",
   "estimator": "f1_micro"
 }

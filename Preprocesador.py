@@ -4,12 +4,14 @@ import pandas as pd
 import numpy as np
 import string
 from colorama import Fore
+
+import pickle
 # Sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler, Normalizer, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, LabelEncoder
 # Nltk
 import nltk
 from nltk.corpus import stopwords
@@ -37,7 +39,15 @@ class DataPreprocessor:
         self.args = args
         self.tools = {}
 
-    def __load_data(self, file):
+        # Descargamos los recursos necesarios de nltk
+        print("\n- Descargando diccionarios...")
+        nltk.download('stopwords', quiet=True)
+        nltk.download('punkt', quiet=True)
+        nltk.download('wordnet', quiet=True)
+        print(Fore.GREEN + "Diccionarios descargados con éxito" + Fore.RESET)
+
+    @staticmethod
+    def __load_data(file):
         """
         Función para cargar los datos de un fichero CSV
 
@@ -59,6 +69,40 @@ class DataPreprocessor:
             print(e)
             sys.exit(1)
 
+    def __divide_data(self, data):
+        """
+        Función que divide los datos en conjuntos de Train y Dev.
+
+        :param data: El conjunto de datos que se somete a la división Train/Dev
+        :type data: pandas.DataFrame
+        :return: Una tupla de 4 elementos:
+                (X_train, y_train, X_dev, y_dev)
+        :rtype: tuple
+        """
+        # Sacamos la columna a predecir
+        try:
+            args = self.args
+            print("\n- Dividiendo Train/Dev...")
+            X = data.drop(columns=[args.prediction])
+            y = data[args.prediction]
+
+            test_size = float(args.test_size)
+            dev_size = float(args.dev_size)
+            dev_size = dev_size / (1.0 - test_size) #Para obtener el Dev proporcional
+
+            X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=test_size, stratify=y, random_state=42)
+
+            X_train, X_dev, y_train, y_dev = train_test_split(X_temp, y_temp, test_size=dev_size, stratify=y_temp, random_state=42)
+
+            print(Fore.GREEN + "\nTrain/Dev divididos con éxito" + Fore.RESET)
+            return X_train, y_train, X_dev, y_dev, X_test, y_test
+        except Exception as e:
+            print(Fore.RED + "Error al realizar la división del train/dev" + Fore.RESET)
+            print(e)
+            sys.exit(1)
+
+    #region Funciones para el PREPROCESADO
+
     def __select_features(self, data):
         """
         Separa las características del conjunto de datos en características numéricas, de texto y categóricas.
@@ -79,7 +123,6 @@ class DataPreprocessor:
             categorical_feature = data.select_dtypes(include=['object', 'string'])
             categorical_feature = categorical_feature.loc[
                 :, categorical_feature.nunique() <= args.preprocessing["unique_category_threshold"]]
-
             # Text features
             text_feature = data.select_dtypes(include='object').drop(columns=categorical_feature.columns, errors='ignore')
 
@@ -196,6 +239,17 @@ class DataPreprocessor:
             print(e)
             sys.exit(1)
 
+    def __encode_target(self, data, target_col, is_Train):
+        """
+        Función para codificar la variable objetivo (y) de forma aislada.
+        """
+        if is_Train:
+            self.tools['target_encoder'] = LabelEncoder()
+            data[target_col] = self.tools['target_encoder'].fit_transform(data[target_col])
+        else:
+            data[target_col] = self.tools['target_encoder'].transform(data[target_col])
+        return data
+
     def __cat2num(self, data, categorical_feature, is_Train):
         """
         Convierte las características categóricas en características numéricas utilizando la codificación de etiquetas.
@@ -209,26 +263,62 @@ class DataPreprocessor:
         :return: El conjunto de datos original con las columnas categoriales discretizadas (o no).
         :rtype: pandas.DataFrame
         """
-        try: #TODO LabelEncoder es más para DT, pero OneHot para KNN, revisar muy mucho
+        try:
+            args = self.args
             print("\n- Realizando Label Encoding...")
-            if not categorical_feature.empty:
-                if is_Train and 'label_encoder' not in self.tools: #Para evitar errores, lo inicializamos una vez
-                    self.tools['label_encoder'] = {}
 
-                for col in categorical_feature.columns:
+            if not categorical_feature.empty:
+                target_col = args.prediction
+                modo = args.preprocessing["cat2num"]
+
+                if is_Train:
+                    self.tools['cat_encoder'] = {}
+
+                for col in tqdm(categorical_feature.columns, desc="Discretizando datos categoriales"):
+                    # Caso extremo: si la columna es el TARGET
+                    if col == target_col:
+                        data = self.__encode_target(data, col, is_Train)
+                        continue # Para que se salte el OneHot/Ordinal
+
                     if is_Train:
-                        self.tools['label_encoder'][col] = LabelEncoder()  # Guardamos el LabelEncoder de la columna
-                        data[col] = self.tools['label_encoder'][col].fit_transform(data[col])
+                        if modo == "ordinal":
+                            # handle_unknown='use_encoded_value' le asigna -1 a las categorías nuevas (LabelEncoder petaba)
+                            encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+                        else: #elif modo == "oneHot"
+                            # handle_unknown='ignore' pone a 0 las desconocidas
+                            # sparse_output=False para que no devuelva una matriz comprimida rara
+                            encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+                        resultado = encoder.fit_transform(data[[col]])
+                        self.tools['cat_encoder'][col] = encoder
                     else:
-                        data[col] = self.tools['label_encoder'][col].transform(data[col])
-                print(Fore.GREEN + "Label Encoding realizado con éxito" + Fore.RESET)
+                        encoder = self.tools['cat_encoder'][col]
+                        resultado = encoder.transform(data[[col]])
+
+                    if modo == "oneHot":
+                        col_names = encoder.get_feature_names_out([col])
+                        df_ohe = pd.DataFrame(resultado, columns=col_names, index=data.index)
+                        data = pd.concat([data.drop(columns=[col]), df_ohe], axis=1)
+                    else:
+                        # Si es ordinal, simplemente sobreescribimos la columna
+                        data[col] = resultado
+
+                print(Fore.GREEN + f"Discretización {modo} realizada con éxito" + Fore.RESET)
             else:
-                print(Fore.YELLOW + "No se está realizando Label Encoding" + Fore.RESET)
+                print(Fore.YELLOW + "No se está realizando discretización" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al realizar Label Encoding" + Fore.RESET)
+            print(Fore.RED + "Error al realizar Discretización" + Fore.RESET)
             print(e)
             sys.exit(1)
+
+    @staticmethod
+    def __clean_text_row(text, stemmer, stop_words):
+        # Limpieza para una sola fila
+        tokens = word_tokenize(str(text).lower())
+        # Filtramos y aplicamos stemmer sin ordenar alfabéticamente
+        cleaned = [stemmer.stem(t) for t in tokens
+                   if t not in stop_words and t not in set(string.punctuation)]
+        return " ".join(cleaned)
 
     def __simplify_text(self, data, text_feature):
         """
@@ -238,7 +328,7 @@ class DataPreprocessor:
             3. Lematizar
             4. Eliminar stop words
             5. Eliminar signos de puntuación
-            6. Ordenar alfabéticamente
+            6. Ordenar alfabéticamente <-- ESTE NO
 
         :param data: El conjunto de datos que se somete al simplificado del texto.
         :type data: pandas.DataFrame
@@ -252,19 +342,12 @@ class DataPreprocessor:
             if not text_feature.empty:
                 stop_words = set(stopwords.words('english'))
                 stemmer = PorterStemmer()
-                for col in text_feature.columns:  # Por si hubiera varias
-                    processed = []
-                    for text in tqdm(data[col], desc=f"Procesando la columna {col}:"):
-                        tokens = word_tokenize(str(text).lower())  # Tokenizado + minúsculas
-                        tokens = [stemmer.stem(t) for t in tokens if t not in stop_words and t not in set(
-                            string.punctuation)]  # Lematizar + stop words + signos de puntuación
-                        tokens = sorted(tokens)  # Ordenado
-                        processed.append(" ".join(tokens))  # Lo junta para que no lo identifique como un array
-                    data[col] = processed
+
+                for col in tqdm(text_feature.columns, desc="Simplificando texto"):
+                    # Usamos apply para procesar toda la columna de forma optimizada
+                    data[col] = data[col].apply(lambda x: self.__clean_text_row(x, stemmer, stop_words))
 
                 print(Fore.GREEN + "Texto simplificado con éxito" + Fore.RESET)
-            else:
-                print(Fore.YELLOW + "No se está simplificando el texto" + Fore.RESET)
             return data
         except Exception as e:
             print(Fore.RED + "Error al simplificar el texto" + Fore.RESET)
@@ -304,7 +387,7 @@ class DataPreprocessor:
                                                     columns=self.tools['vectorizer'].get_feature_names_out(),
                                                     index=data.index)
                     data = pd.concat([data, text_features_df], axis=1)
-                    data.drop(columns=text_feature.columns, axis=1, inplace=True)
+                    data.drop(columns=text_feature.columns, inplace=True)
                     print(Fore.GREEN + f"Texto tratado usando {modo.upper()} con éxito" + Fore.RESET)
                 else:
                     print(Fore.YELLOW + "No se están tratando los textos (modo no reconocido)" + Fore.RESET)
@@ -387,6 +470,8 @@ class DataPreprocessor:
             print(e)
             sys.exit(1)
 
+    #endregion
+
     def __procesar_bloque(self, data, is_Train):
         """
         Función para preprocesar los datos
@@ -433,76 +518,54 @@ class DataPreprocessor:
         y_data = data[self.args.prediction]
         return X_data, y_data
 
-    # Funciones para entrenar un modelo
+    #region Funciones para el GUARDADO de datos
 
-    def __divide_data(self, data):
-        """
-        Función que divide los datos en conjuntos de Train y Dev.
-
-        :param data: El conjunto de datos que se somete a la división Train/Dev
-        :type data: pandas.DataFrame
-        :return: Una tupla de 4 elementos:
-                (X_train, y_train, X_dev, y_dev)
-        :rtype: tuple
-        """
-        # Sacamos la columna a predecir
-        try:
-            args = self.args
-            print("\n- Dividiendo Train/Dev...")
-            X = data.drop(columns=[args.prediction])
-            y = data[args.prediction]
-            X_train, X_dev, y_train, y_dev = train_test_split(X, y, test_size=float(args.test_size), stratify=y, random_state=42)
-
-            # Realizamos Oversampling o Undersampling
-            X_train, y_train = self.__over_under_sampling(X_train, y_train)
-
-            print(Fore.GREEN + "\nTrain/Dev divididos con éxito" + Fore.RESET)
-            return X_train, y_train, X_dev, y_dev
-        except Exception as e:
-            print(Fore.RED + "Error al realizar la división del train/dev" + Fore.RESET)
-            print(e)
-            sys.exit(1)
-
-    def __save_debug_data(self, X_1, y_1, X_2=None, y_2=None, is_Test=False):
+    @staticmethod
+    def __save_debug_data(X_train, y_train, X_dev, y_dev, X_test, y_test):
         """
         Exporta los conjuntos de datos procesados a ficheros CSV.
         Detecta automáticamente si se trata de un flujo de Test o de Train/Dev.
 
-        :param X_1: Características del primer bloque (X_train o X_test).
-        :type X_1: pandas.DataFrame
-        :param y_1: Objetivo del primer bloque (y_train o y_test).
-        :type y_1: pandas.Series
-        :param X_2: Características del segundo bloque (X_dev), opcional.
-        :type X_2: pandas.DataFrame
-        :param y_2: Objetivo del segundo bloque (y_dev), opcional.
-        :type y_2: pandas.Series
-        :param is_Test: Booleano para definir el nombre de los archivos de salida.
-        :type is_Test: bool
+        :param X_train: Características del primer bloque (X_train o X_test).
+        :type X_train: pandas.DataFrame
+        :param y_train: Objetivo del primer bloque (y_train o y_test).
+        :type y_train: pandas.Series
+        :param X_dev: Características del segundo bloque (X_dev), opcional.
+        :type X_dev: pandas.DataFrame
+        :param y_dev: Objetivo del segundo bloque (y_dev), opcional.
+        :type y_dev: pandas.Series
         """
         try:
-            if not os.path.exists('output'):
-                os.makedirs('output')
+            if not os.path.exists('./output'):
+                os.makedirs('./output')
 
-            if is_Test:
-                print(Fore.MAGENTA + "- [Debug] Exportando procesado de Test..." + Fore.RESET)
-                test = pd.concat([X_1, y_1], axis=1)
-                test.to_csv('output/3-test-processed.csv', index=False)
-            else:
-                print(Fore.MAGENTA + "- [Debug] Exportando procesado de Train y Dev..." + Fore.RESET)
-                train = pd.concat([X_1, y_1], axis=1)
-                dev = pd.concat([X_2, y_2], axis=1)
-                train.to_csv('output/1-train-processed.csv', index=False)
-                dev.to_csv('output/2-dev-processed.csv', index=False)
+            # Juntamos para el procesado (evitamos resetear índices)
+            train = pd.concat([X_train, y_train], axis=1)
+            dev = pd.concat([X_dev, y_dev], axis=1)
+            test = pd.concat([X_test, y_test], axis=1)
+
+            print(Fore.MAGENTA + "- [Debug] Exportando procesado de Train y Dev..." + Fore.RESET)
+            train.to_csv('output/1-train-processed.csv', index=False)
+            dev.to_csv('output/2-dev-processed.csv', index=False)
+
+            print(Fore.MAGENTA + "- [Debug] Exportando procesado de Test..." + Fore.RESET)
+            test.to_csv('output/3-test-processed.csv', index=False) # type: ignore para que no de error
 
             print(Fore.GREEN + "\tArchivos de debug guardados con éxito" + Fore.RESET)
         except Exception as e:
             print(Fore.RED + f"\tError al guardar archivos de debug: {e}" + Fore.RESET)
 
-    def preprocesar_datos(self, is_TrainDev):
+    def __save_tools(self):
+        print("- Guardando herramientas de preprocesado...")
+        with open('./output/preprocessor_tools.pkl', 'wb') as f:
+            pickle.dump(self.tools, f)
+        print(Fore.GREEN + "Tools guardadas con éxito" + Fore.RESET)
+
+    #endregion
+
+    def preprocesar_datos(self):
         """
         Maneja el flujo principal de carga y preprocesamiento de los datos.
-        :param is_TrainDev: Indica si estamos en Entrenamiento (True) o Evaluación (False)
-        :type is_TrainDev: bool
         :return: Si is_TrainDev es True, devuelve una tupla de 4 elementos:
                 (X_train, y_train, X_dev, y_dev)
                 Si is_TrainDev es False, devuelve una tupla de 2 elementos:
@@ -515,35 +578,26 @@ class DataPreprocessor:
         self.df_original = self.__load_data(args.file)
         self.df = self.df_original.copy()
 
-        # Descargamos los recursos necesarios de nltk
-        print("\n- Descargando diccionarios...")
-        nltk.download('stopwords')
-        nltk.download('punkt_tab')
-        nltk.download('punkt')
-        nltk.download('wordnet')
+        # Divide en Train/Dev/Test
+        X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
 
-        #Comprobamos si es ScriptEntrenar o Evaluar
-        if is_TrainDev: #TrainDev
-            X_train, y_train, X_dev, y_dev = self.__divide_data(self.df) #Divide y balancea Train
+        # Juntamos para el procesado (evitamos resetear índices)
+        train = pd.concat([X_train, y_train], axis=1)
+        dev = pd.concat([X_dev, y_dev], axis=1)
+        test = pd.concat([X_test, y_test], axis=1)
 
-            # Juntamos para el procesado (evitamos resetear índices)
-            train = pd.concat([X_train, y_train], axis=1)
-            dev = pd.concat([X_dev, y_dev], axis=1)
+        # Procesamos Train, Dev y Test
+        X_train, y_train = self.__procesar_bloque(train, True)
+        X_dev, y_dev = self.__procesar_bloque(dev, False)
+        X_test, y_test = self.__procesar_bloque(test, False)
 
-            #Procesamos Train y Dev
-            X_train, y_train = self.__procesar_bloque(train, True)
-            X_dev, y_dev = self.__procesar_bloque(dev, False)
+        # Balanceamos Train (y solo Train)
+        X_train, y_train = self.__over_under_sampling(X_train, y_train)
 
-            #Para comprobar el preproceso
-            if args.debug:
-                self.__save_debug_data(X_train, y_train, X_dev, y_dev, is_Test=False)
+        # Para comprobar el preproceso
+        if args.debug:
+            self.__save_debug_data(X_train, y_train, X_dev, y_dev, X_test, y_test)
 
-            return X_train, y_train, X_dev, y_dev
-        else: #Test
-            X_test, y_test = self.__procesar_bloque(self.df, False)
+        self.__save_tools()
 
-            # Para comprobar el preproceso
-            if args.debug:
-                self.__save_debug_data(X_test, y_test, is_Test=False)
-
-            return X_test, y_test
+        return X_train, y_train, X_dev, y_dev, X_test, y_test
