@@ -1,435 +1,165 @@
 # -*- coding: utf-8 -*-
-
-import sys
-import json
-import argparse
-import signal
 import os
-import traceback
 import csv
-import string
-import unicodedata
-import numpy as np
-import pandas as pd
 
-from colorama import Fore, Style
+from colorama import Fore
 from tqdm import tqdm
-
-import nltk
-from nltk.tokenize import RegexpTokenizer
-from nltk.stem.wordnet import WordNetLemmatizer
-from nltk.corpus import stopwords
-
+import matplotlib.pyplot as plt
+# Gensim
 from gensim.models import Phrases, LdaModel, Nmf, CoherenceModel, TfidfModel
 from gensim.corpora import Dictionary
 
-import matplotlib.pyplot as plt
 
 
-# ===============================
-# FUNCIONES AUXILIARES
-# ===============================
+class ModelClustering:
 
-def signal_handler(sig, frame):
-    print("\nSaliendo del programa...")
-    sys.exit(0)
+    def __init__(self, args):
+        self.args = args
+        self.argsClustering = args.clustering
 
+    def __preparar_corpus(self, data):
+        # Por comodidad
+        args = self.args
+        argsClustering = self.argsClustering
+        col_txt = argsClustering["textClustering"]
 
-def parse_args():
-    parse = argparse.ArgumentParser(description="Practica de algoritmos de clustering (LDA / NMF).")
-    parse.add_argument("-f", "--file", help="Fichero csv (/Path_to_file)", required=True)
-    parse.add_argument("-t", "--textcol", help="Columna de texto a analizar", required=True)
-    parse.add_argument("-v", "--verbose", help="Muestra información extra", required=False, default=False, action="store_true")
-    parse.add_argument("--debug", help="Modo debug", required=False, default=False, action="store_true")
-    parse.add_argument("--config", help="Archivo JSON de configuración", required=False, default="clustering.json")
+        # Creamos diccionario (y quitamos las más y menos frecuentes)
+        dictionary = Dictionary(data[col_txt])
+        dictionary.filter_extremes(no_below=2, no_above=0.5)
 
-    parsed_args = parse.parse_args()
+        # Calculamos el BoW
+        corpus = [dictionary.doc2bow(doc) for doc in data[col_txt]]
 
-    # Leemos config JSON
-    with open(parsed_args.config, encoding="utf-8") as json_file:
-        config = json.load(json_file)
-
-    for key, value in config.items():
-        setattr(parsed_args, key, value)
-
-    return parsed_args
-
-
-def load_data(file):
-    try:
-        data = pd.read_csv(file, encoding="utf-8")
-        data.columns = data.columns.str.strip()
-        data = data.map(lambda x: x.strip() if isinstance(x, str) else x)
-        data = data.replace(r'^\s*$', np.nan, regex=True)
-        return data
-    except Exception as e:
-        print(Fore.RED + "Error al cargar los datos" + Fore.RESET)
-        print(e)
-        sys.exit(1)
-
-
-def normalize_text(text):
-    text = str(text)
-    text = unicodedata.normalize("NFKD", text)
-    return text
-
-
-def preprocesar_datos(data, args):
-    """
-    Convierte el texto a lista de tokens (data["text"])
-    """
-    try:
-        print("\n- Preprocesando datos...")
-
-        data = data.dropna(subset=[args.textcol]).copy()
-
-        tokenizer = RegexpTokenizer(r'\w+')
-        lemmatizer = WordNetLemmatizer()
-        stop_words = set(stopwords.words("english"))
-
-        processed_docs = []
-
-        for doc in tqdm(data[args.textcol], desc="Tokenizando texto"):
-            doc = normalize_text(doc).lower()
-            tokens = tokenizer.tokenize(doc)
-
-            clean_tokens = []
-            for token in tokens:
-                if token not in stop_words and token not in string.punctuation:
-                    clean_tokens.append(lemmatizer.lemmatize(token))
-
-            processed_docs.append(clean_tokens)
-
-        data["text"] = processed_docs
-
-        print(Fore.GREEN + "Datos preprocesados con éxito" + Fore.RESET)
-        return data
-
-    except Exception as e:
-        print(Fore.RED + "Error al preprocesar datos" + Fore.RESET)
-        print(e)
-        traceback.print_exc()
-        sys.exit(1)
-
-
-# ===============================
-# LDA
-# ===============================
-
-def lda(data, args, safe_folder):
-    try:
-        bigram = Phrases(data['text'], min_count=20)
-
-        for idx in range(len(data['text'])):
-            for token in bigram[data['text'][idx]]:
-                if '_' in token:
-                    data['text'][idx].append(token)
-
-        dictionary = Dictionary(data['text'])
-        dictionary.filter_extremes(no_below=20, no_above=0.5)
-
-        if args.preprocessing["text_process"] == "bow":
-            corpus = [dictionary.doc2bow(doc) for doc in data['text']]
-        elif args.preprocessing["text_process"] == "tf-idf":
+        # Si TF-IDF, transformamos
+        if args.preprocessing["text_process"] == "tf-idf":
             tfidf = TfidfModel(dictionary=dictionary)
-            corpus = [tfidf[dictionary.doc2bow(doc)] for doc in data['text']]
-        else:
-            corpus = [dictionary.doc2bow(doc) for doc in data['text']]
+            corpus = [tfidf[doc] for doc in corpus]
 
-        id2word = dictionary.id2token
+        return dictionary, corpus
 
-        best_avg_topic_coherence = -999999
-        best_model = None
-        best_num_topic = None
-        best_passes = None
-        best_iterations = None
-
-        umass_values = []
-        cv_values = []
-        num_topics_values = []
-
-        with tqdm(total=len(args.lda["num_topics"]) * len(args.lda["passes"]) * len(args.lda["iterations"])) as pbar:
-            with open(safe_folder + '/clustering_results.csv', 'w', newline='', encoding="utf-8") as csvfile:
-                fieldnames = ['Num Topics', 'Passes', 'Iterations', 'Coherence']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-
-                for num_topic in args.lda["num_topics"]:
-                    for passes in args.lda["passes"]:
-                        for iterations in args.lda["iterations"]:
-
-                            lda_model = LdaModel(
-                                corpus=corpus,
-                                id2word=id2word,
-                                alpha='auto',
-                                eta='auto',
-                                iterations=int(iterations),
-                                num_topics=int(num_topic),
-                                passes=int(passes),
-                                random_state=42
-                            )
-
-                            avg_topic_coherence = CoherenceModel(
-                                model=lda_model,
-                                corpus=corpus,
-                                dictionary=dictionary,
-                                coherence='u_mass'
-                            ).get_coherence()
-
-                            writer.writerow({
-                                'Num Topics': num_topic,
-                                'Passes': passes,
-                                'Iterations': iterations,
-                                'Coherence': avg_topic_coherence
-                            })
-
-                            if avg_topic_coherence > best_avg_topic_coherence:
-                                best_model = lda_model
-                                best_num_topic = num_topic
-                                best_passes = passes
-                                best_iterations = iterations
-                                best_avg_topic_coherence = avg_topic_coherence
-
-                            umass_values.append(avg_topic_coherence)
-
-                            cv_score = CoherenceModel(
-                                model=lda_model,
-                                texts=data['text'],
-                                dictionary=dictionary,
-                                coherence='c_v'
-                            ).get_coherence()
-
-                            cv_values.append(cv_score)
-                            num_topics_values.append(num_topic)
-
-                            pbar.update(1)
-
+    @staticmethod
+    def __generar_reportes(modo, model, x_vals, umass_y, cv_y, best_score, topics, passes, iters, folder, corpus):
         # Gráficas
-        plt.figure()
-        plt.plot(num_topics_values, umass_values)
-        plt.xlabel('Número de Tópicos')
-        plt.ylabel('Coherencia (u_mass)')
-        plt.title('Coherencia u_mass vs Número de tópicos (LDA)')
-        plt.savefig(safe_folder + '/coherence_umass.png')
+        for metric, y_vals in [('u_mass', umass_y), ('c_v', cv_y)]:
+            plt.figure()
+            plt.plot(x_vals, y_vals, marker='o')
+            plt.title(f'Coherencia {metric} vs Tópicos ({modo.upper()})')
+            plt.savefig(f"{folder}/coherence_{metric}_{modo}.png")
+            plt.close()
 
-        plt.figure()
-        plt.plot(num_topics_values, cv_values)
-        plt.xlabel('Número de Tópicos')
-        plt.ylabel('Coherencia (c_v)')
-        plt.title('Coherencia c_v vs Número de tópicos (LDA)')
-        plt.savefig(safe_folder + '/coherence_cv.png')
+        # Guardar Tópicos en TXT
+        with open(f"{folder}/topics_{modo}.txt", 'w', encoding="utf-8") as f:
+            f.write(f"Mejor Coherencia: {best_score:.4f}\nParams: Topics={topics}, Passes={passes}, Iters={iters}\n\n")
+            for i, topic in enumerate(model.top_topics(corpus)):
+                f.write(f"Topic {i + 1}\n{topic}\n\n")
 
-        # Mostrar resultados
-        if args.verbose:
-            print(f"\nMedia coherencia de tópico: {best_avg_topic_coherence:.4f}")
-            print(f"Mejores parámetros: num_topics={best_num_topic}, passes={best_passes}, iterations={best_iterations}")
+        model.save(f"{folder}/{modo}_model")
 
-        # Guardar tópicos
-        with open(safe_folder + '/topics.txt', 'w', encoding="utf-8") as f:
-            f.write(f"Media coherencia: {best_avg_topic_coherence:.4f}\n")
-            f.write(f"Mejores parámetros: num_topics={best_num_topic}, passes={best_passes}, iterations={best_iterations}\n\n")
+    def __aplicar_bigramas(self, data):
+        col_txt = self.argsClustering["textClustering"]
+        # Detectar bigramas frecuentes (que aparezcan >20 veces)
+        bigram = Phrases(data[col_txt], min_count=20)
 
-            i = 0
-            for topic in best_model.top_topics(corpus):
-                i += 1
-                f.write(f"Topic {i}\n")
-                f.write(str(topic) + "\n\n")
+        # Añadir al dataset
+        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
 
-        best_model.save(safe_folder + '/lda_model')
-
-    except Exception as e:
-        print(Fore.RED + "Error al realizar el clustering LDA" + Fore.RESET)
-        print(e)
-        traceback.print_exc()
-        sys.exit(1)
-
-
-# ===============================
-# NMF
-# ===============================
-
-def nmf(data, args, safe_folder):
-    try:
-        bigram = Phrases(data['text'], min_count=20)
-
-        for idx in range(len(data['text'])):
-            for token in bigram[data['text'][idx]]:
-                if '_' in token:
-                    data['text'][idx].append(token)
-
-        dictionary = Dictionary(data['text'])
-        dictionary.filter_extremes(no_below=20, no_above=0.5)
-
-        if args.preprocessing["text_process"] == "bow":
-            corpus = [dictionary.doc2bow(doc) for doc in data['text']]
-        elif args.preprocessing["text_process"] == "tf-idf":
-            tfidf = TfidfModel(dictionary=dictionary)
-            corpus = [tfidf[dictionary.doc2bow(doc)] for doc in data['text']]
-        else:
-            corpus = [dictionary.doc2bow(doc) for doc in data['text']]
-
-        id2word = dictionary.id2token
-
-        best_avg_topic_coherence = -999999
-        best_model = None
-        best_num_topic = None
-        best_passes = None
-        best_iterations = None
-
-        umass_values = []
-        cv_values = []
-        num_topics_values = []
-
-        with tqdm(total=len(args.nmf["num_topics"]) * len(args.nmf["passes"]) * len(args.nmf["iterations"])) as pbar:
-            with open(safe_folder + '/clustering_results.csv', 'w', newline='', encoding="utf-8") as csvfile:
-                fieldnames = ['Num Topics', 'Passes', 'Iterations', 'Coherence']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-
-                for num_topic in args.nmf["num_topics"]:
-                    for passes in args.nmf["passes"]:
-                        for iterations in args.nmf["iterations"]:
-
-                            nmf_model = Nmf(
-                                corpus=corpus,
-                                id2word=id2word,
-                                num_topics=int(num_topic),
-                                passes=int(passes),
-                                random_state=42
-                            )
-
-                            avg_topic_coherence = CoherenceModel(
-                                model=nmf_model,
-                                corpus=corpus,
-                                dictionary=dictionary,
-                                coherence='u_mass'
-                            ).get_coherence()
-
-                            writer.writerow({
-                                'Num Topics': num_topic,
-                                'Passes': passes,
-                                'Iterations': iterations,
-                                'Coherence': avg_topic_coherence
-                            })
-
-                            if avg_topic_coherence > best_avg_topic_coherence:
-                                best_model = nmf_model
-                                best_num_topic = num_topic
-                                best_passes = passes
-                                best_iterations = iterations
-                                best_avg_topic_coherence = avg_topic_coherence
-
-                            umass_values.append(avg_topic_coherence)
-
-                            cv_score = CoherenceModel(
-                                model=nmf_model,
-                                texts=data['text'],
-                                dictionary=dictionary,
-                                coherence='c_v'
-                            ).get_coherence()
-
-                            cv_values.append(cv_score)
-                            num_topics_values.append(num_topic)
-
-                            pbar.update(1)
-
-        # Gráficas
-        plt.figure()
-        plt.plot(num_topics_values, umass_values)
-        plt.xlabel('Número de Tópicos')
-        plt.ylabel('Coherencia (u_mass)')
-        plt.title('Coherencia u_mass vs Número de tópicos (NMF)')
-        plt.savefig(safe_folder + '/coherence_umass.png')
-
-        plt.figure()
-        plt.plot(num_topics_values, cv_values)
-        plt.xlabel('Número de Tópicos')
-        plt.ylabel('Coherencia (c_v)')
-        plt.title('Coherencia c_v vs Número de tópicos (NMF)')
-        plt.savefig(safe_folder + '/coherence_cv.png')
-
-        if args.verbose:
-            print(f"\nMedia coherencia de tópico: {best_avg_topic_coherence:.4f}")
-            print(f"Mejores parámetros: num_topics={best_num_topic}, passes={best_passes}, iterations={best_iterations}")
-
-        with open(safe_folder + '/topics.txt', 'w', encoding="utf-8") as f:
-            f.write(f"Media coherencia: {best_avg_topic_coherence:.4f}\n")
-            f.write(f"Mejores parámetros: num_topics={best_num_topic}, passes={best_passes}, iterations={best_iterations}\n\n")
-
-            i = 0
-            for topic in best_model.top_topics(corpus):
-                i += 1
-                f.write(f"Topic {i}\n")
-                f.write(str(topic) + "\n\n")
-
-        best_model.save(safe_folder + '/nmf_model')
-
-    except Exception as e:
-        print(Fore.RED + "Error al realizar el clustering NMF" + Fore.RESET)
-        print(e)
-        traceback.print_exc()
-        sys.exit(1)
-
-
-# ===============================
-# MAIN
-# ===============================
-
-if __name__ == "__main__":
-    np.random.seed(42)
-
-    print("=== Clustering ===")
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    args = parse_args()
-
-    # Carpeta output con nombre del CSV
-    print("\n- Creando carpeta output...")
-
-    if os.name == 'nt':
-        safe_folder = args.file.split('\\')[-1].split('.')[0]
-    else:
-        safe_folder = args.file.split('/')[-1].split('.')[0]
-
-    try:
-        os.makedirs(safe_folder, exist_ok=True)
-        print(Fore.GREEN + "Carpeta output creada con éxito" + Fore.RESET)
-    except Exception as e:
-        print(Fore.RED + "Error al crear la carpeta output" + Fore.RESET)
-        print(e)
-        sys.exit(1)
-
-    # Cargar datos
-    print("\n- Cargando datos...")
-    data = load_data(args.file)
-
-    # Descargar recursos nltk
-    print("\n- Descargando diccionarios...")
-    nltk.download('stopwords', quiet=True)
-    nltk.download('punkt', quiet=True)
-    nltk.download('wordnet', quiet=True)
-
-    # Preprocesar
-    data = preprocesar_datos(data, args)
-
-    if args.debug:
+    def __ejecutar_cluster(self, modo, cluster, data, safe_folder):
         try:
-            data.to_csv(safe_folder + "/data-processed.csv", index=False)
-            print(Fore.GREEN + "Datos preprocesados guardados con éxito" + Fore.RESET)
-        except Exception:
-            print(Fore.RED + "Error guardando data-processed.csv" + Fore.RESET)
+            # Por comodidad
+            args = self.argsClustering
+            col_txt = args["textClustering"]
 
-    # Ejecutar algoritmo
-    print("\n- Realizando clustering...")
+            # Preparar bigramas
+            self.__aplicar_bigramas(data)
 
-    if args.algorithm == "lda":
-        lda(data, args, safe_folder)
-    elif args.algorithm == "nmf":
-        nmf(data, args, safe_folder)
-    else:
-        print(Fore.RED + "Algoritmo no soportado. Usa 'lda' o 'nmf'" + Fore.RESET)
-        sys.exit(1)
+            # Preparar los datos
+            dictionary, corpus = self.__preparar_corpus(data)
+            id2word = dictionary.id2token
 
-    print(Fore.GREEN + "Clustering realizado con éxito" + Fore.RESET)
-    sys.exit(0)
+            # Inicializar variables para el mejor modelo
+            best_avg_topic_coherence = -999999
+            best_model, best_num_topic, best_passes, best_iterations = None, None, None, None
+            umass_values, cv_values, num_topics_values = [], [], []
+
+            # Grid Search
+            conf = args[modo]
+            combinaciones = len(conf["num_topics"]) * len(conf["passes"]) * len(conf["iterations"])
+
+            with tqdm(total=combinaciones, desc=f"Entrenando {modo}") as pbar:
+                with open(f"{safe_folder}/clustering_results_{modo}.csv", 'w', newline='',
+                          encoding="utf-8") as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=['Num Topics', 'Passes', 'Iterations', 'Coherence'])
+                    writer.writeheader()
+
+                    for num_topic in conf["num_topics"]:
+                        for passes in conf["passes"]:
+                            for iterations in conf["iterations"]:
+                                # Configuración base del modelo
+                                model_params = {
+                                    'corpus': corpus,
+                                    'id2word': id2word,
+                                    'num_topics': int(num_topic),
+                                    'passes': int(passes),
+                                    'random_state': 42
+                                }
+
+                                # Añadimos parámetros específicos si es LDA
+                                if modo == "lda":
+                                    model_params.update({'alpha': 'auto', 'eta': 'auto', 'iterations': int(iterations)})
+
+                                # Instanciamos el modelo dinámicamente (LdaModel(...) o Nmf(...))
+                                model = cluster(**model_params) # Los * para que pase de diccionario a params
+
+                                # Cálculo de Coherencia
+                                avg_coherence = CoherenceModel(model=model, corpus=corpus, dictionary=dictionary,
+                                                               coherence='u_mass').get_coherence()
+
+                                writer.writerow({'Num Topics': num_topic, 'Passes': passes, 'Iterations': iterations,
+                                                 'Coherence': avg_coherence})
+
+                                if avg_coherence > best_avg_topic_coherence:
+                                    best_avg_topic_coherence, best_model = avg_coherence, model
+                                    best_num_topic, best_passes, best_iterations = num_topic, passes, iterations
+
+                                # Para gráficas
+                                cv_score = CoherenceModel(model=model, texts=data[col_txt], dictionary=dictionary,
+                                                          coherence='c_v').get_coherence()
+                                umass_values.append(avg_coherence)
+                                cv_values.append(cv_score)
+                                num_topics_values.append(num_topic)
+                                pbar.update(1)
+
+            self.__generar_reportes(modo, best_model, num_topics_values, umass_values, cv_values,
+                                 best_avg_topic_coherence, best_num_topic, best_passes,
+                                 best_iterations, safe_folder, corpus)
+
+        except Exception as e:
+            raise RuntimeError(f"Error en clustering modo={modo}") from e
+
+    def ejecutar_clustering(self, data):
+        try:
+            # Por comodidad
+            args = self.argsClustering
+
+            # Si la carpeta no existe la creamos
+            print("\n- Creando carpeta sentiment_analysis...")
+            carpeta_analisis = './output/sentiment_analysis'
+            os.makedirs(carpeta_analisis, exist_ok=True)
+            print(Fore.GREEN + "Carpeta sentiment_analysis creada con éxito" + Fore.RESET)
+
+            clusters = {
+                "lda": LdaModel,
+                "nmf": Nmf
+            }
+            modo = args["cluster"]
+
+            if modo in clusters:
+                cluster = clusters[modo]
+                self.__ejecutar_cluster(modo, cluster, data, carpeta_analisis)
+            else:
+                print(Fore.RED + "Algoritmo no soportado." + Fore.RESET)
+
+            print(Fore.GREEN + "Clustering realizado con éxito" + Fore.RESET)
+
+        except Exception as e:
+            raise RuntimeError("Error en ejecución de clustering") from e

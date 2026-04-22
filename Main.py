@@ -10,6 +10,16 @@ import json
 import os
 from colorama import Fore
 
+# TODO Para el log de errores (igual me he motivado con esto; ya miraremos)
+"""
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+"""
+
+from Clustering import ModelClustering
 from Preprocesador import DataPreprocessor
 from Clasificador import ModelClassifier
 
@@ -61,20 +71,33 @@ if __name__ == "__main__":
     # Manejamos la señal SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Parseamos los argumentos
-    args = parse_args()
+    try:
+        # Parseamos los argumentos
+        args = parse_args()
 
-    # Si la carpeta output no existe la creamos
-    print("\n- Creando carpeta output...")
-    os.makedirs('./output', exist_ok=True)
-    print(Fore.GREEN + "Carpeta output creada con éxito" + Fore.RESET)
+        # Si la carpeta output no existe la creamos
+        print("\n- Creando carpeta output...")
+        os.makedirs('./output', exist_ok=True)
+        print(Fore.GREEN + "Carpeta output creada con éxito" + Fore.RESET)
 
-    # Preprocesamos los datos
-    print("\n- Preprocesando datos...")
-    prepo = DataPreprocessor(args)
-    X_train, y_train, X_dev, y_dev, X_test, y_test = prepo.preprocesar_datos()
+        # Preprocesamos los datos
+        print("\n- Preprocesando datos...")
+        prepro = DataPreprocessor(args)
 
-    # Ejecutamos el algoritmo seleccionado
-    print("\n- Ejecutando el algoritmo...")
-    modelo = ModelClassifier(args)
-    modelo.ejecutar_algoritmo(X_train, y_train, X_dev, y_dev, X_test, y_test)
+        X_train, y_train, X_dev, y_dev, X_test, y_test = prepro.preprocesar_datos_clasificador()
+        
+        # Ejecutamos el algoritmo seleccionado
+        print("\n- Ejecutando el algoritmo...")
+        modelo = ModelClassifier(args)
+        modelo.ejecutar_algoritmo(X_train, y_train, X_dev, y_dev, X_test, y_test)
+
+        # Preparamos la data para el Clustering
+        print("\n- Realizando clustering...")
+        data_clustering = prepro.preprocesar_datos_clustering()
+
+        cluster = ModelClustering(args)
+        cluster.ejecutar_clustering(data_clustering)
+        sys.exit(0)
+    except Exception:
+        #logging.exception("Error durante la ejecución")
+        sys.exit(1)

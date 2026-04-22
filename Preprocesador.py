@@ -1,10 +1,10 @@
-import sys
 import os
 import pandas as pd
 import numpy as np
 import string
 from colorama import Fore
 
+import unicodedata
 import pickle
 # Sklearn
 from sklearn.model_selection import train_test_split
@@ -16,7 +16,8 @@ from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, LabelEncoder
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
-from nltk.tokenize import word_tokenize
+from nltk.stem.wordnet import WordNetLemmatizer
+from nltk.tokenize import word_tokenize, RegexpTokenizer
 # Imblearn
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
@@ -61,13 +62,12 @@ class DataPreprocessor:
             data = pd.read_csv(file, encoding='utf-8')
             # Para quitar espacios innecesarios en los features y convertir en NaN los vacíos (útil para debugging y también ver el csv más bonitillo)
             data.columns = data.columns.str.strip()
-            data = data.map(lambda x: x.strip() if isinstance(x, str) else x).replace(r'^\s*$', np.nan, regex=True)
+            for col in data.select_dtypes(include='object'):
+                data[col] = data[col].str.strip().replace('', np.nan)
             print(Fore.GREEN + "Datos cargados con éxito" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al cargar los datos" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError(f"Error al cargar los datos desde '{file}'") from e
 
     def __divide_data(self, data):
         """
@@ -86,8 +86,8 @@ class DataPreprocessor:
             X = data.drop(columns=[args.prediction])
             y = data[args.prediction]
 
-            test_size = float(args.test_size)
-            dev_size = float(args.dev_size)
+            test_size = args.test_size
+            dev_size = args.dev_size
             dev_size = dev_size / (1.0 - test_size) #Para obtener el Dev proporcional
 
             X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=test_size, stratify=y, random_state=42)
@@ -97,9 +97,7 @@ class DataPreprocessor:
             print(Fore.GREEN + "\nTrain/Dev divididos con éxito" + Fore.RESET)
             return X_train, y_train, X_dev, y_dev, X_test, y_test
         except Exception as e:
-            print(Fore.RED + "Error al realizar la división del train/dev" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al dividir Train/Dev/Test") from e
 
     #region Funciones para el PREPROCESADO
 
@@ -113,30 +111,25 @@ class DataPreprocessor:
                 (numerical_feature, text_feature, categorical_feature)
         :rtype: tuple
         """
-        try:
-            args = self.args
-            # Numerical features
-            numerical_feature = data.select_dtypes(include=['int64', 'float64'])  # Columnas numéricas
-            if args.prediction in numerical_feature.columns:
-                numerical_feature = numerical_feature.drop(columns=[args.prediction])
-            # Categorical features
-            categorical_feature = data.select_dtypes(include=['object', 'string'])
-            categorical_feature = categorical_feature.loc[
-                :, categorical_feature.nunique() <= args.preprocessing["unique_category_threshold"]]
-            # Text features
-            text_feature = data.select_dtypes(include='object').drop(columns=categorical_feature.columns, errors='ignore')
+        args = self.args
+        # Numerical features
+        numerical_feature = data.select_dtypes(include=['int64', 'float64'])  # Columnas numéricas
+        if args.prediction in numerical_feature.columns:
+            numerical_feature = numerical_feature.drop(columns=[args.prediction])
+        # Categorical features
+        categorical_feature = data.select_dtypes(include=['object', 'string'])
+        categorical_feature = categorical_feature.loc[
+            :, categorical_feature.nunique() <= args.preprocessing["unique_category_threshold"]]
+        # Text features
+        text_feature = data.select_dtypes(include='object').drop(columns=categorical_feature.columns, errors='ignore')
 
-            print(Fore.GREEN + "Datos separados con éxito" + Fore.RESET)
+        print(Fore.GREEN + "Datos separados con éxito" + Fore.RESET)
 
-            if args.debug:
-                print(Fore.MAGENTA + "> Columnas numéricas:\n" + Fore.RESET, numerical_feature.columns)
-                print(Fore.MAGENTA + "> Columnas de texto:\n" + Fore.RESET, text_feature.columns)
-                print(Fore.MAGENTA + "> Columnas categóricas:\n" + Fore.RESET, categorical_feature.columns)
-            return numerical_feature, text_feature, categorical_feature
-        except Exception as e:
-            print(Fore.RED + "Error al separar los datos" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+        if args.debug:
+            print(Fore.MAGENTA + "> Columnas numéricas:\n" + Fore.RESET, numerical_feature.columns)
+            print(Fore.MAGENTA + "> Columnas de texto:\n" + Fore.RESET, text_feature.columns)
+            print(Fore.MAGENTA + "> Columnas categóricas:\n" + Fore.RESET, categorical_feature.columns)
+        return numerical_feature, text_feature, categorical_feature
 
     def __process_missing_values(self, data, numerical_feature, categorical_feature, is_Train):
         """
@@ -190,9 +183,7 @@ class DataPreprocessor:
 
             return data
         except Exception as e:
-            print(Fore.RED + "Error al tratar missing values" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al procesar missing values") from e
 
     def __reescaler(self, data, numerical_feature, is_Train):
         """
@@ -235,9 +226,7 @@ class DataPreprocessor:
                 print(Fore.YELLOW + "No hay datos a escalar" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al reescalar los datos" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al reescalar datos") from e
 
     def __encode_target(self, data, target_col, is_Train):
         """
@@ -307,16 +296,70 @@ class DataPreprocessor:
                 print(Fore.YELLOW + "No se está realizando discretización" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al realizar Discretización" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error en discretización (cat2num)") from e
+
+    # Métodos simplificado texto Clustering
+    @staticmethod
+    def __normalize_text(text):
+        """
+        Elimina tildes y caracteres especiales normalizando el formato Unicode.
+        """
+        text = str(text)
+        text = unicodedata.normalize("NFKD", text)
+        return text
+
+    def __tokenize_text_to_list(self, data):
+        """
+        Convierte una columna de texto en una lista de tokens limpios.
+
+        :param data: El conjunto de datos a procesar.
+        :type data: pandas.DataFrame
+        :return: DataFrame con la columna de texto transformada en listas de tokens.
+        """
+        try:
+            print("\n- Preprocesando texto a lista de tokens...")
+
+            # Por comodidad
+            columna_texto = self.args.clustering["textClustering"]
+
+            # Eliminamos filas donde el texto sea nulo
+            data = data.dropna(subset=[columna_texto]).copy()
+
+            tokenizer = RegexpTokenizer(r'\w+')
+            lemmatizer = WordNetLemmatizer()
+            stop_words = set(stopwords.words("english"))
+
+            processed_docs = []
+
+            for doc in tqdm(data[columna_texto], desc=f"Tokenizando '{columna_texto}'"):
+                # Normalizamos y pasamos a minúsculas
+                doc = self.__normalize_text(doc).lower()
+                tokens = tokenizer.tokenize(doc)
+
+                # Limpieza y Lematización
+                clean_tokens = [
+                    lemmatizer.lemmatize(token)
+                    for token in tokens
+                    if token not in stop_words and token not in string.punctuation
+                ]
+
+                processed_docs.append(clean_tokens)
+
+            # Sobrescribimos la columna original con las listas de tokens
+            data[columna_texto] = processed_docs
+
+            print(Fore.GREEN + "Datos tokenizados con éxito" + Fore.RESET)
+            return data
+
+        except Exception as e:
+            raise RuntimeError("Error al tokenizar texto") from e
 
     @staticmethod
-    def __clean_text_row(text, stemmer, stop_words):
+    def __clean_text_row(text, lemmatizer, stop_words):
         # Limpieza para una sola fila
         tokens = word_tokenize(str(text).lower())
         # Filtramos y aplicamos stemmer sin ordenar alfabéticamente
-        cleaned = [stemmer.stem(t) for t in tokens
+        cleaned = [lemmatizer(t) for t in tokens
                    if t not in stop_words and t not in set(string.punctuation)]
         return " ".join(cleaned)
 
@@ -338,21 +381,27 @@ class DataPreprocessor:
         :rtype: pandas.DataFrame
         """
         try:
+            args = self.args
             print("\n- Simplificando el texto...")
             if not text_feature.empty:
                 stop_words = set(stopwords.words('english'))
-                stemmer = PorterStemmer()
+                lemmatizers = {
+                    "stem": PorterStemmer().stem,
+                    "lem": WordNetLemmatizer().lemmatize
+                }
+                modo = args.preprocessing["lemmatization"]
 
-                for col in tqdm(text_feature.columns, desc="Simplificando texto"):
-                    # Usamos apply para procesar toda la columna de forma optimizada
-                    data[col] = data[col].apply(lambda x: self.__clean_text_row(x, stemmer, stop_words))
+                if modo in lemmatizers:
+                    self.tools['lemmatizer'] = lemmatizers[modo]
 
-                print(Fore.GREEN + "Texto simplificado con éxito" + Fore.RESET)
+                    for col in tqdm(text_feature.columns, desc="Simplificando texto"):
+                        # Usamos apply para procesar toda la columna de forma optimizada
+                        data[col] = data[col].apply(lambda x: self.__clean_text_row(x, self.tools['lemmatizer'], stop_words))
+
+                    print(Fore.GREEN + "Texto simplificado con éxito" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al simplificar el texto" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al simplificar el texto") from e
 
     def __process_text(self, data, text_feature, is_Train):
         """
@@ -383,9 +432,11 @@ class DataPreprocessor:
                         matrix = self.tools['vectorizer'].fit_transform(text_data)
                     else:
                         matrix = self.tools['vectorizer'].transform(text_data)
-                    text_features_df = pd.DataFrame(matrix.toarray(),
-                                                    columns=self.tools['vectorizer'].get_feature_names_out(),
-                                                    index=data.index)
+                    text_features_df = pd.DataFrame(
+                        matrix.toarray(),
+                        columns=self.tools['vectorizer'].get_feature_names_out(),
+                        index=data.index
+                    )
                     data = pd.concat([data, text_features_df], axis=1)
                     data.drop(columns=text_feature.columns, inplace=True)
                     print(Fore.GREEN + f"Texto tratado usando {modo.upper()} con éxito" + Fore.RESET)
@@ -395,9 +446,7 @@ class DataPreprocessor:
                 print(Fore.YELLOW + "No se han encontrado columnas de texto a procesar" + Fore.RESET)
             return data
         except Exception as e:
-            print(Fore.RED + "Error al tratar el texto" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al procesar el texto") from e
 
     def __over_under_sampling(self, X_train, y_train):
         """
@@ -446,9 +495,7 @@ class DataPreprocessor:
                 print(Fore.YELLOW + "\tNo se están over_under sampling los datos" + Fore.RESET)
                 return X_train, y_train
         except Exception as e:
-            print(Fore.RED + "\tError al realizar el over_under sampling" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al balancear") from e
 
     def __drop_features(self, data):
         """
@@ -459,16 +506,11 @@ class DataPreprocessor:
         :return: El conjunto de datos sin las columnas especificadas.
         :rtype: pd.DataFrame
         """
-        try:
-            args = self.args
-            print("\n- Eliminando columnas...")
-            data = data.drop(columns=args.preprocessing["drop_features"], errors='ignore')
-            print(Fore.GREEN + "Columnas eliminadas con éxito" + Fore.RESET)
-            return data
-        except Exception as e:
-            print(Fore.RED + "Error al eliminar columnas" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+        args = self.args
+        print("\n- Eliminando columnas...")
+        data = data.drop(columns=args.preprocessing["drop_features"], errors='ignore')
+        print(Fore.GREEN + "Columnas eliminadas con éxito" + Fore.RESET)
+        return data
 
     #endregion
 
@@ -535,25 +577,25 @@ class DataPreprocessor:
         :param y_dev: Objetivo del segundo bloque (y_dev), opcional.
         :type y_dev: pandas.Series
         """
-        try:
-            if not os.path.exists('./output'):
-                os.makedirs('./output')
+        #try: TODO importar el logger etc (NO HACE FALTA)
+        if not os.path.exists('./output'):
+            os.makedirs('./output')
 
-            # Juntamos para el procesado (evitamos resetear índices)
-            train = pd.concat([X_train, y_train], axis=1)
-            dev = pd.concat([X_dev, y_dev], axis=1)
-            test = pd.concat([X_test, y_test], axis=1)
+        # Juntamos para el procesado (evitamos resetear índices)
+        train = pd.concat([X_train, y_train], axis=1)
+        dev = pd.concat([X_dev, y_dev], axis=1)
+        test = pd.concat([X_test, y_test], axis=1)
 
-            print(Fore.MAGENTA + "- [Debug] Exportando procesado de Train y Dev..." + Fore.RESET)
-            train.to_csv('output/1-train-processed.csv', index=False)
-            dev.to_csv('output/2-dev-processed.csv', index=False)
+        print(Fore.MAGENTA + "- [Debug] Exportando procesado de Train y Dev..." + Fore.RESET)
+        train.to_csv('output/1-train-processed.csv', index=False)
+        dev.to_csv('output/2-dev-processed.csv', index=False)
 
-            print(Fore.MAGENTA + "- [Debug] Exportando procesado de Test..." + Fore.RESET)
-            test.to_csv('output/3-test-processed.csv', index=False) # type: ignore para que no de error
+        print(Fore.MAGENTA + "- [Debug] Exportando procesado de Test..." + Fore.RESET)
+        test.to_csv('output/3-test-processed.csv', index=False) # type: ignore para que no de error
 
-            print(Fore.GREEN + "\tArchivos de debug guardados con éxito" + Fore.RESET)
-        except Exception as e:
-            print(Fore.RED + f"\tError al guardar archivos de debug: {e}" + Fore.RESET)
+        print(Fore.GREEN + "\tArchivos de debug guardados con éxito" + Fore.RESET)
+        #except Exception as e:
+            #logging.warning(f"No se pudo guardar debug; {e}")
 
     def __save_tools(self):
         print("- Guardando herramientas de preprocesado...")
@@ -563,9 +605,16 @@ class DataPreprocessor:
 
     #endregion
 
-    def preprocesar_datos(self):
+    @staticmethod
+    def juntar_data(X_train, y_train, X_dev, y_dev, X_test, y_test):
+        train = pd.concat([X_train, y_train], axis=1)
+        dev = pd.concat([X_dev, y_dev], axis=1)
+        test = pd.concat([X_test, y_test], axis=1)
+        return train, dev, test
+
+    def preprocesar_datos_clasificador(self):
         """
-        Maneja el flujo principal de carga y preprocesamiento de los datos.
+        Maneja el flujo principal de carga y preprocesamiento de los datos del clasificador.
         :return: Si is_TrainDev es True, devuelve una tupla de 4 elementos:
                 (X_train, y_train, X_dev, y_dev)
                 Si is_TrainDev es False, devuelve una tupla de 2 elementos:
@@ -582,9 +631,7 @@ class DataPreprocessor:
         X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
 
         # Juntamos para el procesado (evitamos resetear índices)
-        train = pd.concat([X_train, y_train], axis=1)
-        dev = pd.concat([X_dev, y_dev], axis=1)
-        test = pd.concat([X_test, y_test], axis=1)
+        train, dev, test = self.juntar_data(X_train, y_train, X_dev, y_dev, X_test, y_test)
 
         # Procesamos Train, Dev y Test
         X_train, y_train = self.__procesar_bloque(train, True)
@@ -601,3 +648,24 @@ class DataPreprocessor:
         self.__save_tools()
 
         return X_train, y_train, X_dev, y_dev, X_test, y_test
+
+    def preprocesar_datos_clustering(self):
+        """
+        Maneja el flujo principal de carga y preprocesamiento de los datos del clustering.
+        """
+        args = self.args
+
+        self.df_original = self.__load_data(self.args.file)
+        self.df = self.df_original.copy()
+
+        # Eliminar columnas no deseadas si es necesario
+        self.df = self.__drop_features(self.df)
+
+        # Aplicamos prepro de texto
+        self.df = self.__tokenize_text_to_list(self.df)
+
+        # Para comprobar el preproceso
+        if args.debug:
+            self.df.to_csv('output/6-clustering-processed.csv', index=False)  # type: ignore para que no de error
+
+        return self.df

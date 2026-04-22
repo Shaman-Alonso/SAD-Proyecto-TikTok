@@ -1,4 +1,3 @@
-import sys
 import pandas as pd
 import pickle
 import csv
@@ -70,8 +69,7 @@ class ModelClassifier:
                          round(fila[5], 4)])
                 return rdo_df
         except Exception as e:
-            print(Fore.RED + "Error al guardar el modelo" + Fore.RESET)
-            print(e)
+            raise RuntimeError("Error al guardar el modelo") from e
 
     #region Funciones para calcular métricas
 
@@ -240,9 +238,7 @@ class ModelClassifier:
                 print(Fore.GREEN + "Modelo cargado con éxito" + Fore.RESET)
                 return model
         except Exception as e:
-            print(Fore.RED + "Error al cargar el modelo" + Fore.RESET)
-            print(e)
-            sys.exit(1)
+            raise RuntimeError("Error al cargar el modelo") from e
 
     def __predict(self, model, X_test, y_test):
         args = self.args
@@ -267,13 +263,8 @@ class ModelClassifier:
 
     def __evaluar_algoritmo(self, modelo, X_test, y_test):
         print("\n- Prediciendo...")
-        try:
-            self.__predict(modelo, X_test, y_test)
-            print(Fore.GREEN + "Predicción realizada con éxito" + Fore.RESET)
-            sys.exit(0)
-        except Exception as e:
-            print(e)
-            sys.exit(1)
+        self.__predict(modelo, X_test, y_test)
+        print(Fore.GREEN + "Predicción realizada con éxito" + Fore.RESET)
 
     #endregion
 
@@ -298,6 +289,5 @@ class ModelClassifier:
                 print(Fore.GREEN + f"Evaluación realizada con éxito" + Fore.RESET)
             else:
                 print(Fore.RED + "Algoritmo no soportado" + Fore.RESET)
-                sys.exit(1)
         except Exception as e:
-            print(e)
+            raise RuntimeError("Error al en la ejecución del clasificador") from e
