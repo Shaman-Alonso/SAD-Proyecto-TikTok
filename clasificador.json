@@ -7,7 +7,7 @@
     "cat2num": "oneHot",
     "text_process": "tf-idf",
     "sampling": "oversampling",
-    "drop_features": ["reviewId", "location", "date"],
+    "drop_features": ["reviewId", "location", "date", "gender"],
     "lemmatization": "lem"
   },
   
@@ -32,15 +32,25 @@
       "bootstrap": [true, false],
       "max_features": ["sqrt", "log2"]
   },
+  "nb_config": {
+      "alpha": [0.01, 0.1, 0.5, 1.0],
+      "fit_prior": [true, false]
+  },
+  "lr_config": {
+      "C": [0.01, 0.1, 1, 10],
+      "l1_ratio": [0, 1],
+      "solver": ["liblinear"],
+      "max_iter": [100, 200]
+  },
 
   "test_size": 0.15,
   "dev_size": 0.15,
-  "algorithm": "knn",
+  "algorithm": "logistic_regression",
   "estimator": "f1_micro",
 
   "clustering": {
       "cluster": "lda",
-      "textClustering": "txt",
+      "textClustering": "content",
 
       "lda": {
         "num_topics": [3, 5, 7, 10],

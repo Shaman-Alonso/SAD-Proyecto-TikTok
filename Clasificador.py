@@ -9,6 +9,8 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression
 
 class ModelClassifier:
 
@@ -60,6 +62,15 @@ class ModelClassifier:
                     rdo_df['Combinación'] = rdo_df.apply(lambda
                                                              row: f"RF_N{row['param_n_estimators']}_D{row['param_max_depth']}_S{row['param_min_samples_split']}_L{row['param_min_samples_leaf']}_B{row['param_bootstrap']}",
                                                          axis=1)
+
+                elif args.algorithm == "naive_bayes":
+                    rdo_df['Combinación'] = rdo_df.apply(
+                        lambda row: f"NB_Alpha{row['param_alpha']}_Prior{row['param_fit_prior']}", axis=1)
+
+                elif args.algorithm == "logistic_regression":
+                    rdo_df['Combinación'] = rdo_df.apply(
+                        lambda row: f"LR_C{row['param_C']}_{row['param_penalty']}", axis=1)
+
                 cols_salida = ['Combinación', 'mean_test_precision', 'mean_test_recall', 'mean_test_f1_macro',
                                'mean_test_f1_micro', 'mean_test_f1_weighted']
 
@@ -199,6 +210,18 @@ class ModelClassifier:
                 "bootstrap": config["bootstrap"],  # si usa muestreo bootstrap o no
                 "max_features": config["max_features"]  # nº de features consideradas en cada split
             }
+        elif modo == "naive_bayes":
+            algoritmo_config = {
+                "alpha": self.__calcular_intervalo(args.nb_config["alpha"]),
+                "fit_prior": args.nb_config["fit_prior"]
+            }
+        elif modo == "logistic_regression":
+            algoritmo_config = {
+                "C": self.__calcular_intervalo(args.lr_config["C"]),
+                "l1_ratio": args.lr_config["l1_ratio"],
+                "solver": args.lr_config["solver"],
+                "max_iter": self.__calcular_intervalo(args.lr_config["max_iter"])
+            }
 
         return algoritmo_config
 
@@ -276,7 +299,9 @@ class ModelClassifier:
             algorithms = {
                 "knn": KNeighborsClassifier,
                 "decision_tree": DecisionTreeClassifier,
-                "random_forest": RandomForestClassifier
+                "random_forest": RandomForestClassifier,
+                "naive_bayes": MultinomialNB,
+                "logistic_regression": LogisticRegression
             }
             modo = args.algorithm
 
