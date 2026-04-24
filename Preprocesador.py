@@ -360,7 +360,7 @@ class DataPreprocessor:
         tokens = word_tokenize(str(text).lower())
         # Filtramos y aplicamos stemmer sin ordenar alfabéticamente
         cleaned = [lemmatizer(t) for t in tokens
-                   if t not in stop_words and t not in set(string.punctuation)]
+                   if t not in stop_words and t.isalpha()]
         return " ".join(cleaned)
 
     def __simplify_text(self, data, text_feature):
@@ -421,14 +421,14 @@ class DataPreprocessor:
             print("\n- Procesando columnas de texto...")
             if not text_feature.empty:
                 vectorizers = {
-                    "tf-idf": TfidfVectorizer,
-                    "bow": CountVectorizer
+                    "tf-idf": TfidfVectorizer(max_features=5000, min_df=5),
+                    "bow": CountVectorizer() #TODO meter configuraciones extra
                 }
                 modo = args.preprocessing["text_process"]
                 if modo in vectorizers:
                     text_data = data[text_feature.columns].apply(lambda x: ' '.join(x.astype(str)), axis=1)
                     if is_Train:
-                        self.tools['vectorizer'] = vectorizers[modo]()
+                        self.tools['vectorizer'] = vectorizers[modo]
                         matrix = self.tools['vectorizer'].fit_transform(text_data)
                     else:
                         matrix = self.tools['vectorizer'].transform(text_data)

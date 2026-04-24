@@ -48,7 +48,9 @@ class ModelClassifier:
             with open('./output/4-modelo.csv', 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
                 writer.writerow(['Combinación', 'Precisión', 'Recall', 'F1_Macro', 'F1_Micro', 'F1_Weighted'])
+
                 rdo_df = pd.DataFrame(gs.cv_results_)
+
                 if args.algorithm == "knn":
                     rdo_df['Combinación'] = rdo_df.apply(
                         lambda row: f"kNN_K{row['param_n_neighbors']}_P{row['param_p']}_{row['param_weights']}", axis=1)
@@ -69,7 +71,7 @@ class ModelClassifier:
 
                 elif args.algorithm == "logistic_regression":
                     rdo_df['Combinación'] = rdo_df.apply(
-                        lambda row: f"LR_C{row['param_C']}_{row['param_penalty']}", axis=1)
+                        lambda row: f"LR_C{row['param_C']}_L1ratio{row['param_l1_ratio']}_Solver{row['param_solver']}_MaxIter{row['param_max_iter']}", axis=1)
 
                 cols_salida = ['Combinación', 'mean_test_precision', 'mean_test_recall', 'mean_test_f1_macro',
                                'mean_test_f1_micro', 'mean_test_f1_weighted']
@@ -228,15 +230,22 @@ class ModelClassifier:
     def __entrenar_algoritmo(self, modo, algoritmo, X_train, y_train, X_dev, y_dev):
         args = self.args
 
+        # Si no son deterministas, establecemos semilla
+        if modo == "knn" or modo == "naive_bayes":
+            algoritmo_base = algoritmo()
+        else:
+            algoritmo_base = algoritmo(random_state=42)
+
         # Definimos los hiperparámetros que va a probar el GridSearch
         algoritmo_config = self.__get_config(modo)
         gs = GridSearchCV(
-            algoritmo(), #TODO random_state=42 no funciona con knn
+            algoritmo_base,
             algoritmo_config,
             cv=5,
             n_jobs=args.cpu,
             scoring=self.metricas,
-            refit=args.estimator
+            refit=args.estimator,
+            verbose=10
         )
 
         gs.fit(X_train, y_train)
