@@ -612,6 +612,26 @@ class DataPreprocessor:
         test = pd.concat([X_test, y_test], axis=1)
         return train, dev, test
 
+    def __mapear_target(self, data):
+        args = self.args
+
+        # Definimos el diccionario de mapeo
+        mapeo = {
+            1: 'negativo',
+            2: 'negativo',
+            3: 'neutro',
+            4: 'positivo',
+            5: 'positivo'
+        }
+
+        # Aplicamos el mapeo a la columna objetivo
+        data[args.prediction] = data[args.prediction].map(mapeo)
+
+        # Eliminamos filas que hayan quedado vacías si el rating original no era 1-5
+        data = data.dropna(subset=[args.prediction])
+
+        return data
+
     def preprocesar_datos_clasificador(self):
         """
         Maneja el flujo principal de carga y preprocesamiento de los datos del clasificador.
@@ -626,6 +646,9 @@ class DataPreprocessor:
         args = self.args
         self.df_original = self.__load_data(args.file)
         self.df = self.df_original.copy()
+
+        # Mapeamos en positivos, negativos y neutros
+        self.__mapear_target(self.df)
 
         # Divide en Train/Dev/Test
         X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
@@ -657,6 +680,9 @@ class DataPreprocessor:
 
         self.df_original = self.__load_data(self.args.file)
         self.df = self.df_original.copy()
+
+        # Mapeamos en positivos, negativos y neutros
+        self.__mapear_target(self.df)
 
         # Eliminar columnas no deseadas si es necesario
         self.df = self.__drop_features(self.df)

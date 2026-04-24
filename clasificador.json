@@ -1,18 +1,18 @@
 {
   "preprocessing": {
-    "unique_category_threshold": 10,
+    "unique_category_threshold": 50,
     "missing_values": "delete",
     "impute_strategy": "mean",
     "scaling": "minMax",
     "cat2num": "oneHot",
     "text_process": "tf-idf",
     "sampling": "oversampling",
-    "drop_features": ["reviewId", "location", "date", "gender"],
+    "drop_features": ["reviewId"],
     "lemmatization": "lem"
   },
   
   "knn_config": {
-      "k": [-1,1,5,1],
+      "k": [-1, 1, 10, 2],
       "p": [1,2],
       "weights": ["uniform","distance"],
       "pares": false
@@ -37,16 +37,16 @@
       "fit_prior": [true, false]
   },
   "lr_config": {
-      "C": [0.01, 0.1, 1, 10],
+      "C": [0.01, 0.1],
       "l1_ratio": [0, 1],
-      "solver": ["liblinear"],
-      "max_iter": [100, 200]
+      "solver": ["saga"],
+      "max_iter": [100]
   },
 
   "test_size": 0.15,
   "dev_size": 0.15,
   "algorithm": "logistic_regression",
-  "estimator": "f1_micro",
+  "estimator": "f1_macro",
 
   "clustering": {
       "cluster": "lda",
