@@ -21,6 +21,7 @@ from nltk.tokenize import word_tokenize, RegexpTokenizer
 # Imblearn
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import RandomOverSampler
+from imblearn.over_sampling import SMOTE
 from tqdm import tqdm
 
 
@@ -464,7 +465,8 @@ class DataPreprocessor:
             print("\n\t- Realizando Over/Under sampling...")
             sampling = {
                 "undersampling": RandomUnderSampler,
-                "oversampling": RandomOverSampler
+                "oversampling": RandomOverSampler,
+                "smote": SMOTE
             }
             modo = args.preprocessing["sampling"]
             if modo in sampling:

@@ -6,16 +6,16 @@
     "scaling": "minMax",
     "cat2num": "oneHot",
     "text_process": "tf-idf",
-    "sampling": "oversampling",
+    "sampling": "smote",
     "drop_features": ["reviewId"],
     "lemmatization": "lem"
   },
   
   "knn_config": {
-      "k": [-1, 1, 10, 2],
+      "k": [-1, 5, 7, 1],
       "p": [1,2],
       "weights": ["uniform","distance"],
-      "pares": false
+      "pares": true
   },
   "decision_tree_config": {
       "criterion": ["gini","entropy"],
@@ -45,7 +45,7 @@
 
   "test_size": 0.15,
   "dev_size": 0.15,
-  "algorithm": "logistic_regression",
+  "algorithm": "knn",
   "estimator": "f1_macro",
 
   "clustering": {
