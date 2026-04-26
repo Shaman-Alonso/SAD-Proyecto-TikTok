@@ -692,8 +692,18 @@ class DataPreprocessor:
         # Aplicamos prepro de texto
         self.df = self.__tokenize_text_to_list(self.df)
 
+        datos_separados = {
+            'positivo': self.df[self.df[self.args.prediction] == 'positivo'].copy(),
+            'negativo': self.df[self.df[self.args.prediction] == 'negativo'].copy(),
+            'neutro': self.df[self.df[self.args.prediction] == 'neutro'].copy()
+        }
+
         # Para comprobar el preproceso
         if args.debug:
-            self.df.to_csv('output/6-clustering-processed.csv', index=False)  # type: ignore para que no de error
+            self.df[self.df[self.args.prediction] == 'positivo'].to_csv('output/7-positivos-processed.csv', index=False)  # type: ignore para que no de error
+            self.df[self.df[self.args.prediction] == 'negativo'].to_csv('output/8-negativos-processed.csv',
+                                                                        index=False)  # type: ignore para que no de error
+            self.df[self.df[self.args.prediction] == 'neutro'].to_csv('output/9-neutros-processed.csv',
+                                                                        index=False)  # type: ignore para que no de error
 
-        return self.df
+        return datos_separados

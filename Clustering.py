@@ -141,12 +141,6 @@ class ModelClustering:
             # Por comodidad
             args = self.argsClustering
 
-            # Si la carpeta no existe la creamos
-            print("\n- Creando carpeta sentiment_analysis...")
-            carpeta_analisis = './output/sentiment_analysis'
-            os.makedirs(carpeta_analisis, exist_ok=True)
-            print(Fore.GREEN + "Carpeta sentiment_analysis creada con éxito" + Fore.RESET)
-
             clusters = {
                 "lda": LdaModel,
                 "nmf": Nmf
@@ -155,7 +149,21 @@ class ModelClustering:
 
             if modo in clusters:
                 cluster = clusters[modo]
-                self.__ejecutar_cluster(modo, cluster, data, carpeta_analisis)
+
+                # Por cada sentimiento ejecuta el clustering
+                for sentimiento, data in data.items():
+                    # Evitar errores si un grupo se ha quedado vacío
+                    if data.empty:
+                        print(Fore.YELLOW + f"No hay datos para el sentimiento: {sentimiento}" + Fore.RESET)
+                        continue
+
+                    print(Fore.CYAN + f"\n=== Ejecutando Clustering para: {sentimiento.upper()} ===" + Fore.RESET)
+
+                    # Crear carpeta específica para el sentimiento
+                    carpeta_analisis = f'./output/sentiment_analysis/{sentimiento}'
+                    os.makedirs(carpeta_analisis, exist_ok=True)
+
+                    self.__ejecutar_cluster(modo, cluster, data, carpeta_analisis)
             else:
                 print(Fore.RED + "Algoritmo no soportado." + Fore.RESET)
 
