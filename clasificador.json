@@ -1,18 +1,19 @@
 {
   "preprocessing": {
-    "unique_category_threshold": 50,
+    "unique_category_threshold": 70,
     "missing_values": "delete",
     "impute_strategy": "mean",
     "scaling": "minMax",
-    "cat2num": "oneHot",
+    "cat2num": "ordinal",
     "text_process": "tf-idf",
     "sampling": "smote",
     "drop_features": ["reviewId"],
-    "lemmatization": "lem"
+    "lemmatization": "lem",
+    "cols_especiales": true
   },
   
   "knn_config": {
-      "k": [-1, 5, 7, 1],
+      "k": [5],
       "p": [1,2],
       "weights": ["uniform","distance"],
       "pares": true

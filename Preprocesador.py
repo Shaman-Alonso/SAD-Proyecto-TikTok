@@ -422,7 +422,7 @@ class DataPreprocessor:
             print("\n- Procesando columnas de texto...")
             if not text_feature.empty:
                 vectorizers = {
-                    "tf-idf": TfidfVectorizer(max_features=5000, min_df=5),
+                    "tf-idf": TfidfVectorizer(max_features=5000, min_df=5), #TODO diccionario configurable
                     "bow": CountVectorizer() #TODO meter configuraciones extra
                 }
                 modo = args.preprocessing["text_process"]
@@ -514,6 +514,18 @@ class DataPreprocessor:
         print(Fore.GREEN + "Columnas eliminadas con éxito" + Fore.RESET)
         return data
 
+    def __actualizar_columnas_especiales(self, data): # Es muy mejorable, pero para este proyecto se qeuda así de momento
+        try:
+            if self.args.preprocessing["cols_especiales"]:
+                if "date" in data: # Guardamos solo el año
+                    data['date'] = pd.to_datetime(data['date'], errors='coerce')
+                    data['date'] = data['date'].dt.year
+                if "location" in data: # Guardamos solo el País
+                    data['location'] = data['location'].str.split(",").str[1].str.strip()
+            return data
+        except Exception as e:
+            print(e)
+
     #endregion
 
     def __procesar_bloque(self, data, is_Train):
@@ -537,6 +549,9 @@ class DataPreprocessor:
         """
         # Borrar columnas no necesarias
         data = self.__drop_features(data)
+
+        # Columna de fecha y localización
+        data = self.__actualizar_columnas_especiales(data)
 
         # Separamos los datos por tipos
         numerical_feature, text_feature, categorical_feature = self.__select_features(data)
@@ -670,6 +685,7 @@ class DataPreprocessor:
         if args.debug:
             self.__save_debug_data(X_train, y_train, X_dev, y_dev, X_test, y_test)
 
+        # Guardamos herramientas del preproceso
         self.__save_tools()
 
         return X_train, y_train, X_dev, y_dev, X_test, y_test
@@ -680,7 +696,7 @@ class DataPreprocessor:
         """
         args = self.args
 
-        self.df_original = self.__load_data(self.args.file)
+        self.df_original = self.__load_data(args.file)
         self.df = self.df_original.copy()
 
         # Mapeamos en positivos, negativos y neutros
@@ -693,17 +709,15 @@ class DataPreprocessor:
         self.df = self.__tokenize_text_to_list(self.df)
 
         datos_separados = {
-            'positivo': self.df[self.df[self.args.prediction] == 'positivo'].copy(),
-            'negativo': self.df[self.df[self.args.prediction] == 'negativo'].copy(),
-            'neutro': self.df[self.df[self.args.prediction] == 'neutro'].copy()
+            'positivo': self.df[self.df[args.prediction] == 'positivo'].copy(),
+            'negativo': self.df[self.df[args.prediction] == 'negativo'].copy(),
+            'neutro': self.df[self.df[args.prediction] == 'neutro'].copy()
         }
 
         # Para comprobar el preproceso
         if args.debug:
-            self.df[self.df[self.args.prediction] == 'positivo'].to_csv('output/7-positivos-processed.csv', index=False)  # type: ignore para que no de error
-            self.df[self.df[self.args.prediction] == 'negativo'].to_csv('output/8-negativos-processed.csv',
-                                                                        index=False)  # type: ignore para que no de error
-            self.df[self.df[self.args.prediction] == 'neutro'].to_csv('output/9-neutros-processed.csv',
-                                                                        index=False)  # type: ignore para que no de error
+            datos_separados["positivo"].to_csv('output/7-positivos-processed.csv', index=False)  # type: ignore para que no de error
+            datos_separados["negativo"].to_csv('output/8-negativos-processed.csv', index=False)  # type: ignore para que no de error
+            datos_separados["neutro"].to_csv('output/9-neutros-processed.csv', index=False)  # type: ignore para que no de error
 
         return datos_separados
