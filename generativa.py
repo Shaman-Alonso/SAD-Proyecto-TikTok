@@ -1,7 +1,5 @@
-import numpy as np
 from langchain_core.prompts import PromptTemplate, FewShotPromptTemplate
 from langchain_ollama.llms import OllamaLLM
-from datasets import load_dataset
 import argparse
 import pandas as pd
 import random
@@ -9,9 +7,6 @@ import json
 import os
 import sys
 import subprocess
-
-from marshmallow import RAISE
-from numpy.f2py.auxfuncs import throw_error
 from sklearn.metrics import f1_score,classification_report
 from preproceso_generativa import PreprocesadoGenerativo
 from tqdm import tqdm
