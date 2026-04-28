@@ -722,3 +722,23 @@ class DataPreprocessor:
             datos_separados["neutro"].to_csv('output/9-neutros-processed.csv', index=False)  # type: ignore para que no de error
 
         return datos_separados
+
+    def preprocesar_datos_generativo(self):
+        """
+                Maneja el flujo principal de carga y preprocesamiento de los datos del generativo.
+        """
+        args = self.args
+
+        self.df_original = self.__load_data(args.file)
+        self.df = self.df_original.copy()
+
+        # Mapeamos en positivos, negativos y neutros
+        self.__mapear_target(self.df)
+
+        # Divide en Train/Dev/Test
+        X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
+
+        # Juntamos para el procesado (evitamos resetear índices)
+        train, dev, test = self.juntar_data(X_train, y_train, X_dev, y_dev, X_test, y_test)
+
+        return train, dev, test
