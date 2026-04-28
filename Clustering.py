@@ -10,7 +10,6 @@ from gensim.models import Phrases, LdaModel, Nmf, CoherenceModel, TfidfModel
 from gensim.corpora import Dictionary
 
 
-
 class ModelClustering:
 
     def __init__(self, args):
@@ -37,24 +36,6 @@ class ModelClustering:
 
         return dictionary, corpus
 
-    @staticmethod
-    def __generar_reportes(modo, model, x_vals, umass_y, cv_y, best_score, topics, passes, iters, folder, corpus):
-        # Gráficas
-        for metric, y_vals in [('u_mass', umass_y), ('c_v', cv_y)]:
-            plt.figure()
-            plt.plot(x_vals, y_vals, marker='o')
-            plt.title(f'Coherencia {metric} vs Tópicos ({modo.upper()})')
-            plt.savefig(f"{folder}/coherence_{metric}_{modo}.png")
-            plt.close()
-
-        # Guardar Tópicos en TXT
-        with open(f"{folder}/topics_{modo}.txt", 'w', encoding="utf-8") as f:
-            f.write(f"Mejor Coherencia: {best_score:.4f}\nParams: Topics={topics}, Passes={passes}, Iters={iters}\n\n")
-            for i, topic in enumerate(model.top_topics(corpus)):
-                f.write(f"Topic {i + 1}\n{topic}\n\n")
-
-        model.save(f"{folder}/{modo}_model")
-
     def __aplicar_bigramas(self, data):
         col_txt = self.argsClustering["textClustering"]
         # Detectar bigramas frecuentes (que aparezcan >20 veces)
@@ -62,6 +43,83 @@ class ModelClustering:
 
         # Añadir al dataset
         data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
+
+    def __aplicar_trigramas(self, data):
+        col_txt = self.argsClustering["textClustering"]
+
+        # Primero aplicamos bigramas (necesario para construir trigramas correctamente)
+        bigram = Phrases(data[col_txt], min_count=20)
+        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
+
+        # Ahora detectamos trigramas sobre el texto ya enriquecido con bigramas
+        trigram = Phrases(data[col_txt], min_count=20)
+
+        # Añadir trigramas al dataset
+        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in trigram[tokens] if '_' in t])
+
+    @staticmethod
+    @staticmethod
+    def __generar_reportes(
+            modo, model,
+            x_vals, umass_y, cv_y,
+            best_score, topics, passes, iters,
+            folder, corpus, data,
+            col_review_id="reviewId"
+    ):
+        import matplotlib.pyplot as plt
+
+        # =========================
+        # GRÁFICAS
+        # =========================
+        for metric, y_vals in [('u_mass', umass_y), ('c_v', cv_y)]:
+            plt.figure()
+            plt.plot(x_vals, y_vals, marker='o')
+            plt.title(f'Coherencia {metric} vs Tópicos ({modo.upper()})')
+            plt.savefig(f"{folder}/coherence_{metric}_{modo}.png")
+            plt.close()
+
+        # =========================
+        # AGRUPAR REVIEWS POR TOPIC
+        # =========================
+        docs_por_topic = {i: [] for i in range(model.num_topics)}
+
+        for idx in range(len(corpus)):
+            bow = corpus[idx]
+
+            topics_doc = model.get_document_topics(bow)
+            if not topics_doc:
+                continue
+
+            topico_dominante, prob = max(topics_doc, key=lambda x: x[1])
+
+            try:
+                rid = data.iloc[idx][col_review_id]
+            except Exception:
+                rid = f"unknown_{idx}"
+
+            docs_por_topic[topico_dominante].append((rid, prob))
+
+        # =========================
+        # GUARDAR TXT
+        # =========================
+        with open(f"{folder}/topics_{modo}.txt", "w", encoding="utf-8") as f:
+            f.write(
+                f"Mejor Coherencia: {best_score:.4f}\n"
+                f"Params: Topics={topics}, Passes={passes}, Iters={iters}\n\n"
+            )
+
+            topics_list = model.top_topics(corpus)
+
+            for i, topic in enumerate(topics_list):
+                f.write(f"Topic {i + 1}\n{topic}\n\n")
+
+                f.write("Review IDs asociados (topic dominante):\n")
+                for rid, prob in docs_por_topic[i]:
+                    f.write(f"  - {rid} (prob={prob:.4f})\n")
+
+                f.write("\n" + "-" * 80 + "\n\n")
+
+        model.save(f"{folder}/{modo}_model")
 
     def __ejecutar_cluster(self, modo, cluster, data, safe_folder):
         try:
@@ -71,6 +129,9 @@ class ModelClustering:
 
             # Preparar bigramas
             self.__aplicar_bigramas(data)
+
+            # Preparar trigramas
+            self.__aplicar_trigramas(data)
 
             # Preparar los datos
             dictionary, corpus = self.__preparar_corpus(data)
@@ -108,7 +169,7 @@ class ModelClustering:
                                     model_params.update({'alpha': 'auto', 'eta': 'auto', 'iterations': int(iterations)})
 
                                 # Instanciamos el modelo dinámicamente (LdaModel(...) o Nmf(...))
-                                model = cluster(**model_params) # Los * para que pase de diccionario a params
+                                model = cluster(**model_params)  # Los * para que pase de diccionario a params
 
                                 # Cálculo de Coherencia
                                 avg_coherence = CoherenceModel(model=model, corpus=corpus, dictionary=dictionary,
@@ -129,9 +190,21 @@ class ModelClustering:
                                 num_topics_values.append(num_topic)
                                 pbar.update(1)
 
-            self.__generar_reportes(modo, best_model, num_topics_values, umass_values, cv_values,
-                                 best_avg_topic_coherence, best_num_topic, best_passes,
-                                 best_iterations, safe_folder, corpus)
+            self.__generar_reportes(
+                modo,
+                best_model,
+                num_topics_values,
+                umass_values,
+                cv_values,
+                best_avg_topic_coherence,
+                best_num_topic,
+                best_passes,
+                best_iterations,
+                safe_folder,
+                corpus,
+                data,
+                "reviewId"
+            )
 
         except Exception as e:
             raise RuntimeError(f"Error en clustering modo={modo}") from e
