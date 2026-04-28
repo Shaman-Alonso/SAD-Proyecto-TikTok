@@ -33,7 +33,7 @@ def main():
     modo = args.mode
     if modo == 'classify':
         clasificar(config)
-    if modo == 'data_augmentation':
+    elif modo == 'data_augmentation':
         aumento_datos(config)
     else: raise ValueError("Introduzca uno de los dos modos del scritpt 'classify|data_augmentation'")
 
@@ -47,8 +47,8 @@ def clasificar(config):
     if not hasattr(args,"file"):
         args.file = args.data
 
-    preprocesador = PreprocesadoGenerativo(args)
-    train,dev,test = preprocesador.obtener_datos()
+    preprocesador = DataPreprocessor(args)
+    train,dev,test = preprocesador.preprocesar_datos_generativo()
 
     #Ejemplos de shots
     ejemplos_seleccionados = ""
@@ -112,8 +112,8 @@ def clasificar(config):
     total_instancias = len(dev) if args.sample == -1 else min(args.sample, len(dev))
 
     #Bucle de inferencia y evaluacion
-    for n, row in tqdm(dev.iterrows(), total=total_instancias, desc="Evaluando modelo", unit="res"):
-        if n==args.sample:
+    for paso, (indice_original,row) in enumerate(tqdm(dev.iterrows(), total=total_instancias, desc="Evaluando modelo", unit="res")):
+        if paso==args.sample:
             break
 
         #Extraemos el texto de la review
@@ -141,7 +141,7 @@ def clasificar(config):
 
         # Evaluación
         if ans == etiqueta_real: ok += 1
-        acc = round(100 * ok / (n + 1), 2)
+        acc = round(100 * ok / (paso + 1), 2)
         y_true.append(etiqueta_real)
         y_pred.append(ans)
         log_predicciones.append({
@@ -152,7 +152,7 @@ def clasificar(config):
         })
 
         tqdm.write(
-            f"| N: {n + 1} | Acc: {acc}% | Out: {wrongOut} | Pred: {ans} | Real: {etiqueta_real} | Raw: '{ans_raw}' |")
+            f"| N: {paso + 1} | Acc: {acc}% | Out: {wrongOut} | Pred: {ans} | Real: {etiqueta_real} | Raw: '{ans_raw}' |")
 
     print("-" * 80)
     print("¡Proceso finalizado!")
@@ -174,7 +174,7 @@ def clasificar(config):
         "Modelo": parametros.get('model'),
         "Parametros":json.dumps(parametros),
         "Aciertos": f"{acc}%",
-        "Total instancias": n,
+        "Total instancias": paso,
         "No validas": wrongOut,
         "Shots": args.shots,
         "Ejemplos seleccionados": ejemplos_seleccionados,

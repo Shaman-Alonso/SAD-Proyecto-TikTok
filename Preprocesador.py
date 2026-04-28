@@ -732,8 +732,8 @@ class DataPreprocessor:
         self.df_original = self.__load_data(args.file)
         self.df = self.df_original.copy()
 
-        # Mapeamos en positivos, negativos y neutros
-        self.__mapear_target(self.df)
+        # Eliminamos valores que estén fuera de 1,2,3,4,5
+        self.df = self.df[self.df[args.prediction].astype(str).isin(['1', '2', '3', '4', '5'])]
 
         # Divide en Train/Dev/Test
         X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
