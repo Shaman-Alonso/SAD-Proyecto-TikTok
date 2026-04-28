@@ -347,7 +347,8 @@ class DataPreprocessor:
                 processed_docs.append(clean_tokens)
 
             # Sobrescribimos la columna original con las listas de tokens
-            data[columna_texto] = processed_docs
+            columna_texto_modificada = columna_texto + "_Clustering"
+            data[columna_texto_modificada] = processed_docs
 
             print(Fore.GREEN + "Datos tokenizados con éxito" + Fore.RESET)
             return data
@@ -703,7 +704,7 @@ class DataPreprocessor:
         self.__mapear_target(self.df)
 
         # Eliminar columnas no deseadas si es necesario
-        self.df = self.__drop_features(self.df)
+        #self.df = self.__drop_features(self.df)
 
         # Aplicamos prepro de texto
         self.df = self.__tokenize_text_to_list(self.df)

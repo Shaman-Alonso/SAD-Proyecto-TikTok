@@ -20,7 +20,7 @@ class ModelClustering:
         # Por comodidad
         args = self.args
         argsClustering = self.argsClustering
-        col_txt = argsClustering["textClustering"]
+        col_txt = argsClustering["textClustering"] + "_Clustering"
 
         # Creamos diccionario (y quitamos las más y menos frecuentes)
         dictionary = Dictionary(data[col_txt])
@@ -37,7 +37,7 @@ class ModelClustering:
         return dictionary, corpus
 
     def __aplicar_bigramas(self, data):
-        col_txt = self.argsClustering["textClustering"]
+        col_txt = self.argsClustering["textClustering"] + "_Clustering"
         # Detectar bigramas frecuentes (que aparezcan >20 veces)
         bigram = Phrases(data[col_txt], min_count=20)
 
@@ -45,7 +45,7 @@ class ModelClustering:
         data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
 
     def __aplicar_trigramas(self, data):
-        col_txt = self.argsClustering["textClustering"]
+        col_txt = self.argsClustering["textClustering"] + "_Clustering"
 
         # Primero aplicamos bigramas (necesario para construir trigramas correctamente)
         bigram = Phrases(data[col_txt], min_count=20)
@@ -58,7 +58,6 @@ class ModelClustering:
         data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in trigram[tokens] if '_' in t])
 
     @staticmethod
-    @staticmethod
     def __generar_reportes(
             modo, model,
             x_vals, umass_y, cv_y,
@@ -66,8 +65,6 @@ class ModelClustering:
             folder, corpus, data,
             col_review_id="reviewId"
     ):
-        import matplotlib.pyplot as plt
-
         # =========================
         # GRÁFICAS
         # =========================
@@ -81,23 +78,26 @@ class ModelClustering:
         # =========================
         # AGRUPAR REVIEWS POR TOPIC
         # =========================
-        docs_por_topic = {i: [] for i in range(model.num_topics)}
 
+        # Inicializamos
+        df_temp = data.copy().reset_index(drop=True) # Por si las turbomoscas
+        topicos_principales = []
+        probabilidades = []
+
+        # Asignamos tópicos a los docs
         for idx in range(len(corpus)):
-            bow = corpus[idx]
+            topics_doc = model.get_document_topics(corpus[idx])
 
-            topics_doc = model.get_document_topics(bow)
-            if not topics_doc:
-                continue
+            if topics_doc:
+                topico_dominante, prob = max(topics_doc, key=lambda x: x[1])
+                topicos_principales.append(topico_dominante)
+                probabilidades.append(round(prob, 4))
+            else:
+                topicos_principales.append(-1)
+                probabilidades.append(0.0)
 
-            topico_dominante, prob = max(topics_doc, key=lambda x: x[1])
-
-            try:
-                rid = data.iloc[idx][col_review_id]
-            except Exception:
-                rid = f"unknown_{idx}"
-
-            docs_por_topic[topico_dominante].append((rid, prob))
+        df_temp['dominante_id'] = topicos_principales
+        df_temp['confianza'] = probabilidades
 
         # =========================
         # GUARDAR TXT
@@ -108,14 +108,29 @@ class ModelClustering:
                 f"Params: Topics={topics}, Passes={passes}, Iters={iters}\n\n"
             )
 
-            topics_list = model.top_topics(corpus)
+            for i in range(topics):
+                f.write(f"TOPIC {i}\n")
 
-            for i, topic in enumerate(topics_list):
-                f.write(f"Topic {i + 1}\n{topic}\n\n")
+                # Escribimos las top 10 palabras clave y su peso
+                words = model.show_topic(i, topn=10)
+                f.write(f"\nPalabras clave y su peso: \n\t{', '.join([f"{word} ({weight:.4f})" for word, weight in words])}\n")
 
-                f.write("Review IDs asociados (topic dominante):\n")
-                for rid, prob in docs_por_topic[i]:
-                    f.write(f"  - {rid} (prob={prob:.4f})\n")
+                f.write("\nReview IDs (Top 10 más representativos):\n")
+
+                # Filtramos el DF por este tópico y ordenamos por confianza
+                top_docs = df_temp[df_temp['dominante_id'] == i].sort_values(by='confianza', ascending=False).head(10)
+
+                # Imprimimos la confianza del doc, su review e id
+                if not top_docs.empty:
+                    for idx, (_, row) in enumerate(top_docs.iterrows(), start=1):
+                        rid = row[col_review_id]
+                        conf = row['confianza']
+                        review = str(row['content'])
+
+                        f.write(f"\t{idx}: {rid} (confianza={conf:.4f})\n")
+                        f.write(f"\t\t --> {review}\n\n")
+                else:
+                    f.write("  - No hay documentos asignados como dominantes a este tópico.\n")
 
                 f.write("\n" + "-" * 80 + "\n\n")
 
@@ -125,7 +140,7 @@ class ModelClustering:
         try:
             # Por comodidad
             args = self.argsClustering
-            col_txt = args["textClustering"]
+            col_txt = args["textClustering"] + "_Clustering"
 
             # Preparar bigramas
             self.__aplicar_bigramas(data)
