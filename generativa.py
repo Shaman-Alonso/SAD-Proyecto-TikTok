@@ -11,6 +11,7 @@ import sys
 import subprocess
 from sklearn.metrics import f1_score,classification_report
 from preproceso_generativa import PreprocesadoGenerativo
+from tqdm import tqdm
 
 from Preprocesador import DataPreprocessor
 
@@ -78,9 +79,7 @@ def clasificar(config):
 
     #Elegimos el tipo de prompt
     if args.shots == 0:
-        template_str="""Classify the following review about TIKTOK using only one of the following words [positive, neutral, negative], remember to use ONLY ONE WORD
-    Text:{texto_nuevo}
-    Classification:"""
+        template_str=config['settings'].get('prompt_oneshot')
         prompt = PromptTemplate(template=template_str, input_variables=["texto_nuevo"])
 
     else:
@@ -94,8 +93,8 @@ def clasificar(config):
         prompt=FewShotPromptTemplate(
             examples=ejemplos_seleccionados,
             example_prompt=plantilla_ejemplo,
-            prefix="You are an expert sentiment analyzer. Classify the following app reviews using EXACTLY ONE WORD: positive, neutral, or negative. Do not use emojis, conversational text, or punctuation. Look at these examples:\n",
-            suffix="\nReview: {texto_nuevo}\nClassification:",
+            prefix=config['settings'].get('prompt_fewshot_prefix'),
+            suffix=config['settings'].get('prompt_fewshot_suffix'),
             input_variables=["texto_nuevo"]
         )
 
@@ -111,9 +110,10 @@ def clasificar(config):
     y_true = []
     y_pred = []
     log_predicciones = []
+    total_instancias = len(dev) if args.sample == -1 else min(args.sample, len(dev))
 
     #Bucle de inferencia y evaluacion
-    for n,row in dev.iterrows():
+    for n, row in tqdm(dev.iterrows(), total=total_instancias, desc="Evaluando modelo", unit="res"):
         if n==args.sample:
             break
 
@@ -152,7 +152,7 @@ def clasificar(config):
             "Respuesta_cruda": ans_raw,
         })
 
-        print(
+        tqdm.write(
             f"| N: {n + 1} | Acc: {acc}% | Out: {wrongOut} | Pred: {ans} | Real: {etiqueta_real} | Raw: '{ans_raw}' |")
 
     print("-" * 80)
@@ -240,7 +240,7 @@ def aumento_datos(config):
     parametros = config['model']
     llm = OllamaLLM(model=parametros.get('model'),temperature=parametros.get('temperature'),top_k=parametros.get('top_k'),top_p=parametros.get('top_p'),stop=parametros.get('stop'))
 
-    template_str = "Rewrite the following {etiqueta} app review in a different way, keeping the same meaning. Respond ONLY with the new text.\nReview: {texto}\nNew version:"
+    template_str = config['settings']['prompt_augmentation']
     prompt = PromptTemplate(template=template_str, input_variables=["texto", "etiqueta"])
     chain = prompt | llm
 
@@ -256,8 +256,7 @@ def aumento_datos(config):
         subset_cat=train[train['clase_final']==cat]
 
         #Generamos hasta equilibrar o hasta el limite de sample
-        for j in range(n_necesarios):
-            #if args.sample != -1 and len(nuevas_filas)>=args.sample:break
+        for j in tqdm(range(n_necesarios), desc=f"Generando {cat}", unit="res"):            #if args.sample != -1 and len(nuevas_filas)>=args.sample:break
 
             #Cogemos una fila aleatoria de esta categoria para parafrasearla
             fila_original = subset_cat.sample(1).iloc[0]
@@ -276,11 +275,11 @@ def aumento_datos(config):
                         exito = True
                     else:
                         intentos += 1
-                        print(f"[!] Intento {intentos}: Texto identico generado, reintentando...")
+                        tqdm.write(f"[!] Intento {intentos}: Texto identico generado, reintentando...")
                 except Exception as e:
-                    print(f"Error generando: {e}")
+                    tqdm.write(f"Error generando: {e}")
             if not exito:
-                print(f"Se omitio una fila tras {max_intentos} intentos fallidos.")
+                tqdm.write(f"Se omitio una fila tras {max_intentos} intentos fallidos.")
                 continue
 
             # Creamos la nueva fila mantenida TODA la estructura original
