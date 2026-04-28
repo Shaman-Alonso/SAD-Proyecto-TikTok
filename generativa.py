@@ -9,6 +9,9 @@ import json
 import os
 import sys
 import subprocess
+
+from marshmallow import RAISE
+from numpy.f2py.auxfuncs import throw_error
 from sklearn.metrics import f1_score,classification_report
 from preproceso_generativa import PreprocesadoGenerativo
 from tqdm import tqdm
@@ -22,7 +25,7 @@ parser.add_argument('--config', type=str, default='generativa.json', help='Ruta 
 parser.add_argument('--sample', type=int, default=-1, help='Numero de filas a evaluar') #Numero de instancias a evaluar. Por defecto todas (-1)
 parser.add_argument('--shots',type=int,default=0,help='Numero de ejemplos')
 parser.add_argument('--data',type=str,help='Ruta al archivo CSV')
-parser.add_argument('--modo',type=str,help='Modos: clasificacion o generacion')
+parser.add_argument('--mode',type=str,help='Modos: clasificacion o generacion')
 args=parser.parse_args()
 
 def main():
@@ -32,11 +35,12 @@ def main():
     parametros = config['model']
     print(f"Cargando configuración desde {args.config}: {config['model']}")
     asegurar_modelo_ollama(parametros['model'])
-    modo = config['settings'].get('mode')
+    modo = args.mode
     if modo == 'classify':
         clasificar(config)
     if modo == 'data_augmentation':
         aumento_datos(config)
+    else: raise ValueError("Introduzca uno de los dos modos del scritpt 'classify|data_augmentation'")
 
 def clasificar(config):
     with open("clasificador.json", "r") as f:

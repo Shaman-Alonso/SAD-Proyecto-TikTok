@@ -8,7 +8,6 @@
     "stop": []},
 
   "settings": {
-    "mode": "classify",
     "prompt_oneshot": "Classify the following review about TIKTOK using only one of the following words [positive, neutral, negative], remember to use ONLY ONE WORD\n    Text:{texto_nuevo}\n    Classification:",
     "prompt_fewshot_prefix":"You are an expert sentiment analyzer. Classify the following app reviews using EXACTLY ONE WORD: positive, neutral, or negative. Do not use emojis, conversational text, or punctuation. Look at these examples:\n",
     "prompt_fewshot_suffix": "\nReview: {texto_nuevo}\nClassification:",
