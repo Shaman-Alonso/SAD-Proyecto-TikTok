@@ -1,8 +1,13 @@
 {
-  "model": "gemma2:2b",
-  "temperature": 1.5,
-  "num_predict": 15,
-  "top_k": 10,
-  "top_p": 0.5,
-  "stop": ["\n"]
+  "model": {
+    "model": "gemma2:2b",
+    "temperature": 0.0,
+    "num_predict": 15,
+    "top_k": 10,
+    "top_p": 0.5,
+    "stop": []},
+
+  "settings": {
+    "mode": "classify"
+  }
 }
