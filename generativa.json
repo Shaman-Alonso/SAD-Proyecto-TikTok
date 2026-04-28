@@ -1,8 +1,16 @@
 {
-  "model": "gemma2:2b",
-  "temperature": 1.5,
-  "num_predict": 15,
-  "top_k": 10,
-  "top_p": 0.5,
-  "stop": ["\n"]
+  "model": {
+    "model": "gemma2:2b",
+    "temperature": 0.0,
+    "num_predict": 15,
+    "top_k": 10,
+    "top_p": 0.5,
+    "stop": []},
+
+  "settings": {
+    "prompt_oneshot": "Classify the following review about TIKTOK using only one of the following words [positive, neutral, negative], remember to use ONLY ONE WORD\n    Text:{texto_nuevo}\n    Classification:",
+    "prompt_fewshot_prefix":"You are an expert sentiment analyzer. Classify the following app reviews using EXACTLY ONE WORD: positive, neutral, or negative. Do not use emojis, conversational text, or punctuation. Look at these examples:\n",
+    "prompt_fewshot_suffix": "\nReview: {texto_nuevo}\nClassification:",
+    "prompt_augmentation": "Rewrite the following {etiqueta} app review in a different way, keeping the same meaning. Respond ONLY with the new text.\nReview: {texto}\nNew version:"
+  }
 }
