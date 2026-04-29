@@ -4,6 +4,7 @@ import numpy as np
 import string
 from colorama import Fore
 
+import re
 import unicodedata
 import pickle
 # Sklearn
@@ -94,6 +95,21 @@ class DataPreprocessor:
             X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=test_size, stratify=y, random_state=42)
 
             X_train, X_dev, y_train, y_dev = train_test_split(X_temp, y_temp, test_size=dev_size, stratify=y_temp, random_state=42)
+
+            # Se añade aquí porque no hay tiempo xd
+            if args.preprocessing["sampling"] == "generativa":
+                try:
+                    train = pd.concat([X_train, y_train], axis=1)
+                    df = pd.read_csv('output/augmented.csv')
+                    resultado = pd.concat([train, df], ignore_index=True, axis=0)
+
+                    if args.debug:
+                        resultado.to_csv('output/10-concatAugmented.csv', index=False)
+
+                    X_train = resultado.drop(columns=[args.prediction])
+                    y_train = resultado[args.prediction]
+                except Exception as e:
+                    print("Error generativa: "+ e)
 
             print(Fore.GREEN + "\nTrain/Dev divididos con éxito" + Fore.RESET)
             return X_train, y_train, X_dev, y_dev, X_test, y_test
@@ -359,7 +375,17 @@ class DataPreprocessor:
     @staticmethod
     def __clean_text_row(text, lemmatizer, stop_words):
         # Limpieza para una sola fila
-        tokens = word_tokenize(str(text).lower())
+        text = str(text).lower()
+
+        # Limpieza de caracteres raruncios
+        text = re.sub(r"http\S+", "", text)  # eliminar URLs
+        text = re.sub(r"@\w+", "", text)  # eliminar menciones
+        text = re.sub(r"\d+", "", text)  # eliminar números
+        text = re.sub(r"[^\w\s]", "", text)  # eliminar puntuación/emojis básicos
+
+        # Tokeniza
+        tokens = word_tokenize(text)
+
         # Filtramos y aplicamos stemmer sin ordenar alfabéticamente
         cleaned = [lemmatizer(t) for t in tokens
                    if t not in stop_words and t.isalpha()]
@@ -423,8 +449,17 @@ class DataPreprocessor:
             print("\n- Procesando columnas de texto...")
             if not text_feature.empty:
                 vectorizers = {
-                    "tf-idf": TfidfVectorizer(max_features=5000, min_df=5), #TODO diccionario configurable
-                    "bow": CountVectorizer() #TODO meter configuraciones extra
+                    "tf-idf": TfidfVectorizer(max_features=10000,
+                                              min_df=3,
+                                              max_df=0.9,
+                                              ngram_range=(1,2),
+                                              sublinear_tf=True,
+                                              lowercase=True), #TODO configurable
+                    "bow": CountVectorizer(max_features=10000,
+                                           min_df=3,
+                                           max_df=0.9,
+                                           ngram_range=(1,2),
+                                           lowercase=True) #TODO configurable
                 }
                 modo = args.preprocessing["text_process"]
                 if modo in vectorizers:
@@ -476,6 +511,9 @@ class DataPreprocessor:
                 X_train_resampled, y_train_resampled = sampler(random_state=42).fit_resample(X_train, y_train)
                 print(Fore.GREEN + f"\tSe ha realizado {modo} con éxito" + Fore.RESET)
                 return X_train_resampled, y_train_resampled
+            elif modo == "generativa":
+                print(Fore.GREEN + f"\tSe ha realizado {modo} con éxito" + Fore.RESET)
+                return X_train, y_train
             elif modo == "auto":  # Hemos definido un modo automático
                 counts = y_train.value_counts()
                 ratio_actual = counts.min() / counts.max()  # Calcula el ratio de la clase minoritaria
@@ -515,18 +553,6 @@ class DataPreprocessor:
         print(Fore.GREEN + "Columnas eliminadas con éxito" + Fore.RESET)
         return data
 
-    def __actualizar_columnas_especiales(self, data): # Es muy mejorable, pero para este proyecto se qeuda así de momento
-        try:
-            if self.args.preprocessing["cols_especiales"]:
-                if "date" in data: # Guardamos solo el año
-                    data['date'] = pd.to_datetime(data['date'], errors='coerce')
-                    data['date'] = data['date'].dt.year
-                if "location" in data: # Guardamos solo el País
-                    data['location'] = data['location'].str.split(",").str[1].str.strip()
-            return data
-        except Exception as e:
-            print(e)
-
     #endregion
 
     def __procesar_bloque(self, data, is_Train):
@@ -550,9 +576,6 @@ class DataPreprocessor:
         """
         # Borrar columnas no necesarias
         data = self.__drop_features(data)
-
-        # Columna de fecha y localización
-        data = self.__actualizar_columnas_especiales(data)
 
         # Separamos los datos por tipos
         numerical_feature, text_feature, categorical_feature = self.__select_features(data)
@@ -630,7 +653,7 @@ class DataPreprocessor:
         test = pd.concat([X_test, y_test], axis=1)
         return train, dev, test
 
-    def __mapear_target(self, data):
+    def __mapear_target(self, y_train, y_dev, y_test):
         args = self.args
 
         # Definimos el diccionario de mapeo
@@ -643,12 +666,14 @@ class DataPreprocessor:
         }
 
         # Aplicamos el mapeo a la columna objetivo
-        data[args.prediction] = data[args.prediction].map(mapeo)
+        y_train = y_train.map(mapeo)
+        y_dev = y_dev.map(mapeo)
+        y_test = y_test.map(mapeo)
 
         # Eliminamos filas que hayan quedado vacías si el rating original no era 1-5
-        data = data.dropna(subset=[args.prediction])
+        #data = data.dropna(subset=[args.prediction]) #TODO revisar
 
-        return data
+        return y_train, y_dev, y_test
 
     def preprocesar_datos_clasificador(self):
         """
@@ -665,11 +690,11 @@ class DataPreprocessor:
         self.df_original = self.__load_data(args.file)
         self.df = self.df_original.copy()
 
-        # Mapeamos en positivos, negativos y neutros
-        self.__mapear_target(self.df)
-
         # Divide en Train/Dev/Test
         X_train, y_train, X_dev, y_dev, X_test, y_test = self.__divide_data(self.df)
+
+        # Mapeamos en positivos, negativos y neutros
+        y_train, y_dev, y_test = self.__mapear_target(y_train, y_dev, y_test)
 
         # Juntamos para el procesado (evitamos resetear índices)
         train, dev, test = self.juntar_data(X_train, y_train, X_dev, y_dev, X_test, y_test)

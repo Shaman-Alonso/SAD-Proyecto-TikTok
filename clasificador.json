@@ -1,19 +1,18 @@
 {
   "preprocessing": {
-    "unique_category_threshold": 70,
+    "unique_category_threshold": 50,
     "missing_values": "delete",
     "impute_strategy": "mean",
     "scaling": "minMax",
     "cat2num": "ordinal",
     "text_process": "tf-idf",
-    "sampling": "smote",
-    "drop_features": ["reviewId"],
-    "lemmatization": "lem",
-    "cols_especiales": true
+    "sampling": "generativa",
+    "drop_features": ["reviewId","location","date","gender"],
+    "lemmatization": "lem"
   },
   
   "knn_config": {
-      "k": [5],
+      "k": [3],
       "p": [1,2],
       "weights": ["uniform","distance"],
       "pares": true
@@ -38,10 +37,10 @@
       "fit_prior": [true, false]
   },
   "lr_config": {
-      "C": [0.01, 0.1],
-      "l1_ratio": [0, 1],
+      "C": [0.01, 0.1, 0.4, 5],
+      "l1_ratio": [0, 0.5, 1],
       "solver": ["saga"],
-      "max_iter": [100]
+      "max_iter": [5000, 10000]
   },
 
   "test_size": 0.15,
@@ -54,7 +53,7 @@
       "textClustering": "content",
 
       "lda": {
-        "num_topics": [3, 5, 7, 10],
+        "num_topics": [5],
         "passes": [10, 20],
         "iterations": [100]
       },
