@@ -173,7 +173,7 @@ def clasificar(config):
     resultados_experimento = {
         "Modelo": parametros.get('model'),
         "Parametros":json.dumps(parametros),
-        "Aciertos": f"{acc}%",
+        "f1_macro": f"{f1_macro_pct}%",
         "Total instancias": paso,
         "No validas": wrongOut,
         "Shots": args.shots,
@@ -203,7 +203,7 @@ def clasificar(config):
         top_p = parametros.get('top_p','top_p')
         stop = parametros.get('stop','stop')
 
-        nombre_archivo_logs = f"logs_{nombre_modelo}_t{temp}_k{top_k}_{args.shots}shots.csv"
+        nombre_archivo_logs = f"logs_{nombre_modelo}_t{temp}_k{top_k}_p{top_p}_{args.shots}shots.csv"
         ruta_logs = os.path.join(carpeta_salida, nombre_archivo_logs)
 
         df_logs.to_csv(ruta_logs, index=False, encoding='utf-8')
@@ -245,13 +245,23 @@ def aumento_datos(config):
 
     nuevas_filas = []
 
+    limite_multiplicador=2
     #Iteramos sobre la clase
     for cat in clases_a_aumentar:
         n_necesarios = max_ejemplos-conteo_clases[cat]
+        max_sinteticos = conteo_clases[cat]*limite_multiplicador
+
+        if n_necesarios>limite_multiplicador:
+            n_necesarios = max_sinteticos
+            print(f"[!] Aviso se aplico el limite sintetico: x{limite_multiplicador} a {cat}"
+                  f"\nLimite sintetico: {max_sinteticos}")
+
         if args.sample != -1 and n_necesarios > args.sample:
             n_necesarios = args.sample
-        print(f"Generando {n_necesarios} nuevas reseñas para la clase: {cat}...")
 
+        if n_necesarios <0:
+            print(f"La clase {cat} no requiere generación. Se omite.")
+            continue
         subset_cat=train[train['clase_final']==cat]
 
         #Generamos hasta equilibrar o hasta el limite de sample
