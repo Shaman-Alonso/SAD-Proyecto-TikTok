@@ -109,7 +109,7 @@ class DataPreprocessor:
                     X_train = resultado.drop(columns=[args.prediction])
                     y_train = resultado[args.prediction]
                 except Exception as e:
-                    print("Error generativa: "+ e)
+                    print("Error generativa: "+ str(e))
 
             print(Fore.GREEN + "\nTrain/Dev divididos con éxito" + Fore.RESET)
             return X_train, y_train, X_dev, y_dev, X_test, y_test

@@ -11,6 +11,22 @@
     "prompt_oneshot": "Classify the following review about TIKTOK using only one of the following words [positive, neutral, negative], remember to use ONLY ONE WORD\n    Text:{texto_nuevo}\n    Classification:",
     "prompt_fewshot_prefix":"You are an expert sentiment analyzer. Classify the following app reviews using EXACTLY ONE WORD: positive, neutral, or negative. Do not use emojis, conversational text, or punctuation. Look at these examples:\n",
     "prompt_fewshot_suffix": "\nReview: {texto_nuevo}\nClassification:",
-    "prompt_augmentation": "Rewrite the following {etiqueta} app review in a different way, keeping the same meaning. Respond ONLY with the new text.\nReview: {texto}\nNew version:"
+    "prompt_augmentation": "Rewrite the following {etiqueta} app review in a different way, keeping the same meaning. Respond ONLY with the new text.\nReview: {texto}\nNew version:",
+    "prompt_augmentation_few_shot_prefix": "You are an expert copywriter. Rewrite the given app reviews keeping their original sentiment and meaning intact, but using different words. Respond ONLY with the new rewritten text. Here are some examples:\n\nReview: The app crashes every time I open it, completely useless.\nNew version: I can't even get past the loading screen before it closes. Terrible experience.\n\nReview: It's okay, nothing special but it gets the job done.\nNew version: An average application that covers the basics without standing out.\n\n",
+    "aug_fewshot_list": [
+      {
+        "original": "The app crashes every time I open it, completely useless.",
+        "paraphrase": "I can't even get past the loading screen before it closes. Terrible experience."
+      },
+      {
+        "original": "It's okay, nothing special but it gets the job done.",
+        "paraphrase": "An average application that covers the basics without standing out."
+      },
+      {
+        "original": "Absolutely love it! Best social media app out there.",
+        "paraphrase": "I am obsessed with this! It is easily the greatest platform available right now."
+      }
+    ],
+    "prompt_augmentation_few_shot_suffix": "Now, rewrite this {etiqueta} review.\nReview: {texto}\nNew version:"
   }
 }

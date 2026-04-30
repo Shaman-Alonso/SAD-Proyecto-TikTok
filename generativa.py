@@ -8,7 +8,6 @@ import os
 import sys
 import subprocess
 from sklearn.metrics import f1_score,classification_report
-from preproceso_generativa import PreprocesadoGenerativo
 from tqdm import tqdm
 
 from Preprocesador import DataPreprocessor
@@ -46,6 +45,8 @@ def clasificar(config):
     args.prediction = "score"
     if not hasattr(args,"file"):
         args.file = args.data
+    if not hasattr(args, "debug"):
+        args.debug = False
 
     preprocesador = DataPreprocessor(args)
     train,dev,test = preprocesador.preprocesar_datos_generativo()
@@ -218,9 +219,11 @@ def aumento_datos(config):
     args.prediction = "score"
     if not hasattr(args, "file"):
         args.file = args.data
+    if not hasattr(args, "debug"):
+        args.debug = False
 
-    preprocesador = PreprocesadoGenerativo(args)
-    train, _, _ = preprocesador.obtener_datos()
+    preprocesador = DataPreprocessor(args)
+    train, _, _ = preprocesador.preprocesar_datos_generativo()
     train['clase_final'] = train[args.prediction].astype(str).map(
         {'1': 'negative', '2': 'negative', '3': 'neutral', '4': 'positive', '5': 'positive'}
     )
@@ -239,8 +242,19 @@ def aumento_datos(config):
     parametros = config['model']
     llm = OllamaLLM(model=parametros.get('model'),temperature=parametros.get('temperature'),top_k=parametros.get('top_k'),top_p=parametros.get('top_p'),stop=parametros.get('stop'))
 
-    template_str = config['settings']['prompt_augmentation']
-    prompt = PromptTemplate(template=template_str, input_variables=["texto", "etiqueta"])
+    if args.shots == 0:
+        template_str = config['settings']['prompt_augmentation']
+        variables = ["texto","etiqueta"]
+    else:
+        prefix = config['settings']['prompt_augmentation_few_shot_prefix']
+        suffix = config['settings']['prompt_augmentation_few_shot_suffix']
+        template_str = prefix+"{ejemplos_dinamicos}"+suffix
+        variables = ["texto","etiqueta","ejemplos_dinamicos"]
+
+        pool_ejemplos = config['settings']['aug_fewshot_list']
+
+
+    prompt = PromptTemplate(template=template_str, input_variables=variables)
     chain = prompt | llm
 
     nuevas_filas = []
@@ -251,7 +265,7 @@ def aumento_datos(config):
         n_necesarios = max_ejemplos-conteo_clases[cat]
         max_sinteticos = conteo_clases[cat]*limite_multiplicador
 
-        if n_necesarios>limite_multiplicador:
+        if n_necesarios>max_sinteticos:
             n_necesarios = max_sinteticos
             print(f"[!] Aviso se aplico el limite sintetico: x{limite_multiplicador} a {cat}"
                   f"\nLimite sintetico: {max_sinteticos}")
@@ -275,10 +289,18 @@ def aumento_datos(config):
             exito = False
             while intentos<max_intentos and not exito:
                 try:
-                    parrafo = chain.invoke({
+                    inputs_llm = {
                         "texto": fila_original['content'],
                         "etiqueta": cat
-                    }).strip()
+                    }
+
+                    if args.shots > 0 and pool_ejemplos:
+                        ejemplos_al_azar = random.sample(pool_ejemplos, min(args.shots, len(pool_ejemplos)))
+                        texto_ejemplos = ""
+                        for ej in ejemplos_al_azar:
+                            texto_ejemplos += f"Review: {ej['original']}\n New version: {ej['paraphrase']}\n\n"
+                        inputs_llm["ejemplos_dinamicos"] = texto_ejemplos
+                    parrafo = chain.invoke(inputs_llm).strip()
                     #print(fila_original['content'])
                     if parrafo.lower() != fila_original['content'].lower() and len(parrafo)>5:
                         exito = True
