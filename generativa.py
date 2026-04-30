@@ -79,7 +79,7 @@ def clasificar(config):
 
     #Elegimos el tipo de prompt
     if args.shots == 0:
-        template_str=config['settings'].get('prompt_oneshot')
+        template_str=config['settings'].get('prompt_zeroshot')
         prompt = PromptTemplate(template=template_str, input_variables=["texto_nuevo"])
 
     else:
