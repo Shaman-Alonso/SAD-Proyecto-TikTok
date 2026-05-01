@@ -726,7 +726,16 @@ class DataPreprocessor:
         self.df = self.df_original.copy()
 
         # Mapeamos en positivos, negativos y neutros
-        self.__mapear_target(self.df)
+        mapeo = {
+            1: 'negativo',
+            2: 'negativo',
+            3: 'neutro',
+            4: 'positivo',
+            5: 'positivo'
+        }
+
+        # Aplicamos el mapeo a la columna objetivo
+        self.df[args.prediction] = self.df[args.prediction].map(mapeo)
 
         # Eliminar columnas no deseadas si es necesario
         #self.df = self.__drop_features(self.df)
@@ -737,14 +746,14 @@ class DataPreprocessor:
         datos_separados = {
             'positivo': self.df[self.df[args.prediction] == 'positivo'].copy(),
             'negativo': self.df[self.df[args.prediction] == 'negativo'].copy(),
-            'neutro': self.df[self.df[args.prediction] == 'neutro'].copy()
+            #'neutro': self.df[self.df[args.prediction] == 'neutro'].copy()
         }
 
         # Para comprobar el preproceso
         if args.debug:
             datos_separados["positivo"].to_csv('output/7-positivos-processed.csv', index=False)  # type: ignore para que no de error
             datos_separados["negativo"].to_csv('output/8-negativos-processed.csv', index=False)  # type: ignore para que no de error
-            datos_separados["neutro"].to_csv('output/9-neutros-processed.csv', index=False)  # type: ignore para que no de error
+            #datos_separados["neutro"].to_csv('output/9-neutros-processed.csv', index=False)  # type: ignore para que no de error
 
         return datos_separados
 
