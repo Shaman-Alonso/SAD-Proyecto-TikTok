@@ -40,6 +40,7 @@ def parse_args():
     """
     parse = argparse.ArgumentParser(description="Practica de algoritmos de clasificación de datos.")
     parse.add_argument("-f", "--file", help="Fichero csv (/Path_to_file)", required=True)
+    parse.add_argument("-m", "--mode", help="Modo: Train, Test o Cluster", required=True)
     parse.add_argument("-p", "--prediction", help="Columna a predecir (Nombre de la columna)", required=True)
     parse.add_argument("-c", "--cpu", help="Número de CPUs a utilizar [-1 para usar todos]", required=False, default=-1,type=int)
     parse.add_argument("-v", "--verbose", help="Muestra las metricas por la terminal", required=False, default=False,action="store_true")
@@ -83,21 +84,32 @@ if __name__ == "__main__":
         # Preprocesamos los datos
         print("\n- Preprocesando datos...")
         prepro = DataPreprocessor(args)
+        if args.mode == "Train":
+            X_train, y_train, X_dev, y_dev, X_test, y_test = prepro.preprocesar_datos_clasificador()
 
-        X_train, y_train, X_dev, y_dev, X_test, y_test = prepro.preprocesar_datos_clasificador()
-        
-        # Ejecutamos el algoritmo seleccionado
-        print("\n- Ejecutando el algoritmo...")
-        modelo = ModelClassifier(args)
-        modelo.ejecutar_algoritmo(X_train, y_train, X_dev, y_dev, X_test, y_test)
+            # Ejecutamos el algoritmo seleccionado
+            print("\n- Ejecutando el algoritmo...")
+            modelo = ModelClassifier(args)
+            modelo.ejecutar_algoritmo(X_train, y_train, X_dev, y_dev, X_test, y_test)
+        elif args.mode == "Cluster":
+            # Preparamos la data para el Clustering
+            print("\n- Realizando clustering...")
+            data_clustering = prepro.preprocesar_datos_clustering()
 
-        # Preparamos la data para el Clustering
-        print("\n- Realizando clustering...")
-        data_clustering = prepro.preprocesar_datos_clustering()
+            cluster = ModelClustering(args)
+            cluster.ejecutar_clustering(data_clustering)
+        elif args.mode == "Test":
+            X_test, y_test = prepro.preprocesar_soloTest()
 
-        cluster = ModelClustering(args)
-        cluster.ejecutar_clustering(data_clustering)
+            # Ejecutamos el algoritmo seleccionado
+            print("\n- Ejecutando el algoritmo...")
+            modelo = ModelClassifier(args)
+            modelo.evaluar_algoritmo(X_test, y_test)
+        else:
+            print(Fore.RED + "Modo no soportado. Escribe: Train, Test o Cluster" + Fore.RESET)
+
         sys.exit(0)
-    except Exception:
+    except Exception as e:
+        print("Error: " + e)
         #logging.exception("Error durante la ejecución")
         sys.exit(1)

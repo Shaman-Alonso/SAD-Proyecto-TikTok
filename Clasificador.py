@@ -293,8 +293,9 @@ class ModelClassifier:
 
         print(Fore.GREEN + "Predicción guardada con éxito" + Fore.RESET)
 
-    def __evaluar_algoritmo(self, modelo, X_test, y_test):
+    def evaluar_algoritmo(self, X_test, y_test):
         print("\n- Prediciendo...")
+        modelo = self.__load_model()
         self.__predict(modelo, X_test, y_test)
         print(Fore.GREEN + "Predicción realizada con éxito" + Fore.RESET)
 
@@ -319,8 +320,8 @@ class ModelClassifier:
                 modelo = self.__entrenar_algoritmo(modo, algoritmo, X_train, y_train, X_dev, y_dev)  # Entrena el algoritmo correspondiente
                 print(Fore.GREEN + f"Algoritmo {modo} entrenado con éxito" + Fore.RESET)
 
-                self.__evaluar_algoritmo(modelo, X_test, y_test)
-                print(Fore.GREEN + f"Evaluación realizada con éxito" + Fore.RESET)
+                #self.__evaluar_algoritmo(modelo, X_test, y_test)
+                #print(Fore.GREEN + f"Evaluación realizada con éxito" + Fore.RESET)
             else:
                 print(Fore.RED + "Algoritmo no soportado" + Fore.RESET)
         except Exception as e:

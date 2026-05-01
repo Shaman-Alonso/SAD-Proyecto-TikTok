@@ -716,6 +716,50 @@ class DataPreprocessor:
 
         return X_train, y_train, X_dev, y_dev, X_test, y_test
 
+    def __load_tools(self):
+        """Carga las herramientas de preprocesado ajustadas en Train"""
+        print("- Cargando herramientas de preprocesado...")
+        try:
+            with open('./output/preprocessor_tools.pkl', 'rb') as f:
+                self.tools = pickle.load(f)
+            print(Fore.GREEN + "Tools cargadas con éxito" + Fore.RESET)
+        except Exception as e:
+            raise RuntimeError("Error al cargar las tools de preprocesado. ¿Has entrenado primero?") from e
+
+    def preprocesar_soloTest(self):
+        # Por comodidad, cargamos el df y lo copiamos
+        args = self.args
+        self.df_original = self.__load_data(args.file)
+        self.df = self.df_original.copy()
+
+        # Mapeamos en positivos, negativos y neutros
+        mapeo = {
+            1: 'negativo',
+            2: 'negativo',
+            3: 'neutro',
+            4: 'positivo',
+            5: 'positivo'
+        }
+
+        # Aplicamos el mapeo a la columna objetivo
+        self.df[args.prediction] = self.df[args.prediction].map(mapeo)
+
+        # Cargamos el preproceso
+        self.__load_tools()
+
+        X_test = self.df.drop(columns=self.args.prediction)
+        y_test = self.df[self.args.prediction]
+
+        test = pd.concat([X_test, y_test], axis=1)
+
+        X_test, y_test = self.__procesar_bloque(test, False)
+
+        if args.debug:
+            test = pd.concat([X_test, y_test], axis=1)
+            test.to_csv('output/3-test-processed.csv', index=False)
+
+        return X_test, y_test
+
     def preprocesar_datos_clustering(self):
         """
         Maneja el flujo principal de carga y preprocesamiento de los datos del clustering.
