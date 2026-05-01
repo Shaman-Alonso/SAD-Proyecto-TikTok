@@ -5,7 +5,7 @@ import csv
 from colorama import Fore
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-# Gensim
+
 from gensim.models import Phrases, LdaModel, Nmf, CoherenceModel, TfidfModel
 from gensim.corpora import Dictionary
 
@@ -16,81 +16,87 @@ class ModelClustering:
         self.args = args
         self.argsClustering = args.clustering
 
+    # =========================
+    # PREPARACIÓN CORPUS
+    # =========================
     def __preparar_corpus(self, data):
-        # Por comodidad
         args = self.args
         argsClustering = self.argsClustering
         col_txt = argsClustering["textClustering"] + "_Clustering"
 
-        # Creamos diccionario (y quitamos las más y menos frecuentes)
         dictionary = Dictionary(data[col_txt])
         dictionary.filter_extremes(no_below=2, no_above=0.5)
 
-        # Calculamos el BoW
-        corpus = [dictionary.doc2bow(doc) for doc in data[col_txt]]
+        bow_corpus = [dictionary.doc2bow(doc) for doc in data[col_txt]]
 
-        # Si TF-IDF, transformamos
+        # TF-IDF opcional (solo para modelos que lo soporten bien)
         if args.preprocessing["text_process"] == "tf-idf":
-            tfidf = TfidfModel(dictionary=dictionary)
-            corpus = [tfidf[doc] for doc in corpus]
+            tfidf = TfidfModel(bow_corpus)
+            corpus_model = tfidf[bow_corpus]
+        else:
+            corpus_model = bow_corpus
 
-        return dictionary, corpus
+        return dictionary, bow_corpus, corpus_model
 
+    # =========================
+    # BIGRAMAS
+    # =========================
     def __aplicar_bigramas(self, data):
         col_txt = self.argsClustering["textClustering"] + "_Clustering"
-        # Detectar bigramas frecuentes (que aparezcan >20 veces)
+
         bigram = Phrases(data[col_txt], min_count=20)
+        data[col_txt] = data[col_txt].apply(
+            lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t]
+        )
 
-        # Añadir al dataset
-        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
-
+    # =========================
+    # TRIGRAMAS
+    # =========================
     def __aplicar_trigramas(self, data):
         col_txt = self.argsClustering["textClustering"] + "_Clustering"
 
-        # Primero aplicamos bigramas (necesario para construir trigramas correctamente)
         bigram = Phrases(data[col_txt], min_count=20)
-        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t])
+        data[col_txt] = data[col_txt].apply(
+            lambda tokens: tokens + [t for t in bigram[tokens] if '_' in t]
+        )
 
-        # Ahora detectamos trigramas sobre el texto ya enriquecido con bigramas
         trigram = Phrases(data[col_txt], min_count=20)
+        data[col_txt] = data[col_txt].apply(
+            lambda tokens: tokens + [t for t in trigram[tokens] if '_' in t]
+        )
 
-        # Añadir trigramas al dataset
-        data[col_txt] = data[col_txt].apply(lambda tokens: tokens + [t for t in trigram[tokens] if '_' in t])
-
+    # =========================
+    # REPORTES
+    # =========================
     @staticmethod
     def __generar_reportes(
-            modo, model,
-            x_vals, umass_y, cv_y,
-            best_score, topics, passes, iters,
-            folder, corpus, data,
-            col_review_id="reviewId"
+        modo, model,
+        x_vals, umass_y, cv_y,
+        best_score, topics, passes, iters,
+        folder, corpus_bow, data,
+        col_review_id="reviewId"
     ):
-        # =========================
-        # GRÁFICAS
-        # =========================
+
         for metric, y_vals in [('u_mass', umass_y), ('c_v', cv_y)]:
             plt.figure()
             plt.plot(x_vals, y_vals, marker='o')
             plt.title(f'Coherencia {metric} vs Tópicos ({modo.upper()})')
+            plt.xlabel("Número de tópicos (K)")
+            plt.ylabel(f"Coherencia {metric}")
             plt.savefig(f"{folder}/coherence_{metric}_{modo}.png")
             plt.close()
 
-        # =========================
-        # AGRUPAR REVIEWS POR TOPIC
-        # =========================
+        df_temp = data.copy().reset_index(drop=True)
 
-        # Inicializamos
-        df_temp = data.copy().reset_index(drop=True) # Por si las turbomoscas
         topicos_principales = []
         probabilidades = []
 
-        # Asignamos tópicos a los docs
-        for idx in range(len(corpus)):
-            topics_doc = model.get_document_topics(corpus[idx])
+        for idx in range(len(corpus_bow)):
+            topics_doc = model.get_document_topics(corpus_bow[idx])
 
             if topics_doc:
-                topico_dominante, prob = max(topics_doc, key=lambda x: x[1])
-                topicos_principales.append(topico_dominante)
+                topico, prob = max(topics_doc, key=lambda x: x[1])
+                topicos_principales.append(topico)
                 probabilidades.append(round(prob, 4))
             else:
                 topicos_principales.append(-1)
@@ -99,9 +105,6 @@ class ModelClustering:
         df_temp['dominante_id'] = topicos_principales
         df_temp['confianza'] = probabilidades
 
-        # =========================
-        # GUARDAR TXT
-        # =========================
         with open(f"{folder}/topics_{modo}.txt", "w", encoding="utf-8") as f:
             f.write(
                 f"Mejor Coherencia: {best_score:.4f}\n"
@@ -111,112 +114,126 @@ class ModelClustering:
             for i in range(topics):
                 f.write(f"TOPIC {i}\n")
 
-                # Escribimos las top 10 palabras clave y su peso
                 words = model.show_topic(i, topn=10)
-                f.write(f"\nPalabras clave y su peso: \n\t{', '.join([f"{word} ({weight:.4f})" for word, weight in words])}\n")
+                f.write(
+                    f"\nPalabras clave:\n\t"
+                    f"{', '.join([f'{w} ({p:.4f})' for w, p in words])}\n"
+                )
 
-                f.write("\nReview IDs (Top 10 más representativos):\n")
+                top_docs = df_temp[df_temp['dominante_id'] == i] \
+                    .sort_values(by='confianza', ascending=False).head(10)
 
-                # Filtramos el DF por este tópico y ordenamos por confianza
-                top_docs = df_temp[df_temp['dominante_id'] == i].sort_values(by='confianza', ascending=False).head(10)
+                f.write("\nReviews representativas:\n")
 
-                # Imprimimos la confianza del doc, su review e id
                 if not top_docs.empty:
-                    for idx, (_, row) in enumerate(top_docs.iterrows(), start=1):
-                        rid = row[col_review_id]
-                        conf = row['confianza']
-                        review = str(row['content'])
-
-                        f.write(f"\t{idx}: {rid} (confianza={conf:.4f})\n")
-                        f.write(f"\t\t --> {review}\n\n")
+                    for idx, (_, row) in enumerate(top_docs.iterrows(), 1):
+                        f.write(f"\t{idx}: {row[col_review_id]} (conf={row['confianza']:.4f})\n")
+                        f.write(f"\t\t{row['content']}\n\n")
                 else:
-                    f.write("  - No hay documentos asignados como dominantes a este tópico.\n")
+                    f.write("  - Sin documentos\n")
 
                 f.write("\n" + "-" * 80 + "\n\n")
 
         model.save(f"{folder}/{modo}_model")
 
+    # =========================
+    # ENTRENAMIENTO CLUSTER
+    # =========================
     def __ejecutar_cluster(self, modo, cluster, data, safe_folder):
         try:
-            # Por comodidad
             args = self.argsClustering
             col_txt = args["textClustering"] + "_Clustering"
 
-            # Preparar bigramas
             self.__aplicar_bigramas(data)
-
-            # Preparar trigramas
             self.__aplicar_trigramas(data)
 
-            # Preparar los datos
-            dictionary, corpus = self.__preparar_corpus(data)
-            id2word = dictionary.id2token
+            dictionary, corpus_bow, corpus_model = self.__preparar_corpus(data)
 
-            # Inicializar variables para el mejor modelo
-            best_avg_topic_coherence = -999999
-            best_model, best_num_topic, best_passes, best_iterations = None, None, None, None
-            umass_values, cv_values, num_topics_values = [], [], []
+            best_score = -999999
+            best_model = None
+            best_params = None
 
-            # Grid Search
+            umass_values, cv_values, x_vals = [], [], []
+
             conf = args[modo]
-            combinaciones = len(conf["num_topics"]) * len(conf["passes"]) * len(conf["iterations"])
+            total = len(conf["num_topics"]) * len(conf["passes"]) * len(conf["iterations"])
 
-            with tqdm(total=combinaciones, desc=f"Entrenando {modo}") as pbar:
-                with open(f"{safe_folder}/clustering_results_{modo}.csv", 'w', newline='',
-                          encoding="utf-8") as csvfile:
-                    writer = csv.DictWriter(csvfile, fieldnames=['Num Topics', 'Passes', 'Iterations', 'Coherence'])
+            csv_path = f"{safe_folder}/clustering_results_{modo}.csv"
+
+            with tqdm(total=total, desc=f"Entrenando {modo}") as pbar:
+                with open(csv_path, "w", newline="", encoding="utf-8") as fcsv:
+                    writer = csv.DictWriter(
+                        fcsv,
+                        fieldnames=["Num Topics", "Passes", "Iterations", "u_mass", "c_v"]
+                    )
                     writer.writeheader()
 
-                    for num_topic in conf["num_topics"]:
-                        for passes in conf["passes"]:
-                            for iterations in conf["iterations"]:
-                                # Configuración base del modelo
-                                model_params = {
-                                    'corpus': corpus,
-                                    'id2word': id2word,
-                                    'num_topics': int(num_topic),
-                                    'passes': int(passes),
-                                    'random_state': 42
+                    for k in conf["num_topics"]:
+                        for p in conf["passes"]:
+                            for it in conf["iterations"]:
+
+                                params = {
+                                    "corpus": corpus_model,
+                                    "id2word": dictionary,
+                                    "num_topics": int(k),
+                                    "passes": int(p),
+                                    "random_state": 42
                                 }
 
-                                # Añadimos parámetros específicos si es LDA
                                 if modo == "lda":
-                                    model_params.update({'alpha': 'auto', 'eta': 'auto', 'iterations': int(iterations)})
+                                    params.update({
+                                        "alpha": "symmetric",
+                                        "eta": "symmetric",
+                                        "iterations": int(it)
+                                    })
 
-                                # Instanciamos el modelo dinámicamente (LdaModel(...) o Nmf(...))
-                                model = cluster(**model_params)  # Los * para que pase de diccionario a params
+                                model = cluster(**params)
 
-                                # Cálculo de Coherencia
-                                avg_coherence = CoherenceModel(model=model, corpus=corpus, dictionary=dictionary,
-                                                               coherence='u_mass').get_coherence()
+                                umass = CoherenceModel(
+                                    model=model,
+                                    corpus=corpus_bow,
+                                    dictionary=dictionary,
+                                    coherence="u_mass"
+                                ).get_coherence()
 
-                                writer.writerow({'Num Topics': num_topic, 'Passes': passes, 'Iterations': iterations,
-                                                 'Coherence': avg_coherence})
+                                cv = CoherenceModel(
+                                    model=model,
+                                    texts=data[col_txt],
+                                    dictionary=dictionary,
+                                    coherence="c_v"
+                                ).get_coherence()
 
-                                if avg_coherence > best_avg_topic_coherence:
-                                    best_avg_topic_coherence, best_model = avg_coherence, model
-                                    best_num_topic, best_passes, best_iterations = num_topic, passes, iterations
+                                writer.writerow({
+                                    "Num Topics": k,
+                                    "Passes": p,
+                                    "Iterations": it,
+                                    "u_mass": umass,
+                                    "c_v": cv
+                                })
 
-                                # Para gráficas
-                                cv_score = CoherenceModel(model=model, texts=data[col_txt], dictionary=dictionary,
-                                                          coherence='c_v').get_coherence()
-                                umass_values.append(avg_coherence)
-                                cv_values.append(cv_score)
-                                num_topics_values.append(num_topic)
+                                if umass > best_score:
+                                    best_score = umass
+                                    best_model = model
+                                    best_params = (k, p, it)
+
+                                umass_values.append(umass)
+                                cv_values.append(cv)
+                                x_vals.append(k)
+
                                 pbar.update(1)
 
             self.__generar_reportes(
                 modo,
                 best_model,
-                num_topics_values,
+                x_vals,
                 umass_values,
                 cv_values,
-                best_avg_topic_coherence,
-                best_num_topic,
-                best_passes,
-                best_iterations,
+                best_score,
+                best_params[0],
+                best_params[1],
+                best_params[2],
                 safe_folder,
-                corpus,
+                corpus_bow,
                 data,
                 "reviewId"
             )
@@ -224,38 +241,38 @@ class ModelClustering:
         except Exception as e:
             raise RuntimeError(f"Error en clustering modo={modo}") from e
 
+    # =========================
+    # MAIN
+    # =========================
     def ejecutar_clustering(self, data):
         try:
-            # Por comodidad
-            args = self.argsClustering
-
             clusters = {
                 "lda": LdaModel,
                 "nmf": Nmf
             }
-            modo = args["cluster"]
 
-            if modo in clusters:
-                cluster = clusters[modo]
+            modo = self.argsClustering["cluster"]
 
-                # Por cada sentimiento ejecuta el clustering
-                for sentimiento, data in data.items():
-                    # Evitar errores si un grupo se ha quedado vacío
-                    if data.empty:
-                        print(Fore.YELLOW + f"No hay datos para el sentimiento: {sentimiento}" + Fore.RESET)
-                        continue
-
-                    print(Fore.CYAN + f"\n=== Ejecutando Clustering para: {sentimiento.upper()} ===" + Fore.RESET)
-
-                    # Crear carpeta específica para el sentimiento
-                    carpeta_analisis = f'./output/sentiment_analysis/{sentimiento}'
-                    os.makedirs(carpeta_analisis, exist_ok=True)
-
-                    self.__ejecutar_cluster(modo, cluster, data, carpeta_analisis)
-            else:
+            if modo not in clusters:
                 print(Fore.RED + "Algoritmo no soportado." + Fore.RESET)
+                return
 
-            print(Fore.GREEN + "Clustering realizado con éxito" + Fore.RESET)
+            cluster = clusters[modo]
+
+            for sentimiento, df in data.items():
+
+                if df.empty:
+                    print(Fore.YELLOW + f"Sin datos: {sentimiento}" + Fore.RESET)
+                    continue
+
+                print(Fore.CYAN + f"\n=== {sentimiento.upper()} ===" + Fore.RESET)
+
+                folder = f"./output/sentiment_analysis/{sentimiento}"
+                os.makedirs(folder, exist_ok=True)
+
+                self.__ejecutar_cluster(modo, cluster, df, folder)
+
+            print(Fore.GREEN + "Clustering completado" + Fore.RESET)
 
         except Exception as e:
             raise RuntimeError("Error en ejecución de clustering") from e
