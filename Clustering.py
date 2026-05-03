@@ -50,7 +50,7 @@ class ModelClustering:
         )
 
     # =========================
-    # TRIGRAMAS
+    # N-GRAMAS
     # =========================
     def __aplicar_trigramas(self, data):
         col_txt = self.argsClustering["textClustering"] + "_Clustering"
