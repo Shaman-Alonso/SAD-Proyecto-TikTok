@@ -19,7 +19,7 @@ parser.add_argument('--config', type=str, default='generativa.json', help='Ruta 
 parser.add_argument('--sample', type=int, default=-1, help='Numero de filas a evaluar') #Numero de instancias a evaluar. Por defecto todas (-1)
 parser.add_argument('--shots',type=int,default=0,help='Numero de ejemplos')
 parser.add_argument('--data',type=str,help='Ruta al archivo CSV')
-parser.add_argument('--mode',type=str,help='Modos: clasificacion o generacion')
+parser.add_argument('--mode',type=str,help='Modos: classify, data_augmentation o evaluar')
 parser.add_argument('--test_data', type=str, default='', help='Ruta al archivo CSV de test')
 args=parser.parse_args()
 

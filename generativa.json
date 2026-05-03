@@ -12,7 +12,7 @@
     "prompt_fewshot_prefix":"You are an expert sentiment analyzer. Classify the following app reviews using EXACTLY ONE WORD: positive, neutral, or negative. Do not use emojis, conversational text, or punctuation. Look at these examples:\n",
     "prompt_fewshot_suffix": "\nReview: {texto_nuevo}\nClassification:",
     "prompt_augmentation": "Rewrite the following {etiqueta} app review in a different way, keeping the same meaning. Respond ONLY with the new text.\nReview: {texto}\nNew version:",
-    "prompt_augmentation_few_shot_prefix": "You are an expert copywriter. Rewrite the given app reviews keeping their original sentiment and meaning intact, but using different words. Respond ONLY with the new rewritten text. Here are some examples:\n\nReview: The app crashes every time I open it, completely useless.\nNew version: I can't even get past the loading screen before it closes. Terrible experience.\n\nReview: It's okay, nothing special but it gets the job done.\nNew version: An average application that covers the basics without standing out.\n\n",
+    "prompt_augmentation_few_shot_prefix": "You are an expert copywriter. Rewrite the given app reviews keeping their original sentiment and meaning intact, but using different words. Respond ONLY with the new rewritten text. Here are some examples:\n\n",
     "aug_fewshot_list": [
       {
         "original": "The app crashes every time I open it, completely useless.",
