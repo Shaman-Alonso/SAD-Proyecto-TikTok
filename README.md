@@ -105,7 +105,11 @@ python Main.py -f dataset.csv -p columna_objetivo -m "Train" -v --debug
 ```bash
 python Main.py -f dataset.csv -p columna_objetivo -m "Test" -v --debug
 ```
-
+### Clustering (LDA / NMF)
+# Nota: El algoritmo de clustering (LDA o NMF) y sus parámetros se configuran en `clasificador.json` dentro del apartado `"clustering"`.
+```bash
+python Main.py -f dataset.csv -p columna_objetivo -m "Cluster" -v --debug
+```
 ### Clasificación generativa
 ```bash
 python generativa.py --config generativa.json --sample -1 --shots 0 --data dataset.csv --mode classify
