@@ -40,20 +40,19 @@ pip install -r requirements.txt
 
 ## Estructura del Proyecto
 
-- Main.py &rarr; Script principal. Orquesta la ejecución de los diferentes módulos según los parametros indicados
-- Preprocesador.py &rarr; Modulo de limpieza y preparación de datos. Se encarga del filtrado, tratamiento de nulos, mapeo de etiquetas y de la partición segura del dataset
-- clasificador.py &rarr; Modulo de ML tradicional. Contiene el entrenamiento, balanceo y evaluación de los algoritmos clasicos.
-- requirements.txt &rarr; Dependencias
-- output/ &rarr; Resultados generados
-- generativa.py &rarr; Pipeline de IA Generativa basado en LangChain y Ollama. Ejecuta la clasificacion de sentimientos, el aumento de datos sinteticos con filtro de duplicados y la evaluación.
-- Clustering.py &rarr; Módulo de aprendizaje no supervisado. Aplica algoritmos de agrupamiento y modelado de tópicos para descubrir que temas especificos hablan los usuarios de las reseñas positivas y negativas
-- Plotter.py &rarr; Script de visualización de datos.
-- clasificador.json &rarr; Configuración del modelo
-- generativa.json &rarr; Configuración del LLM
+- Main.py           &rarr; Script principal. Orquesta la ejecución de los diferentes módulos según los parametros indicados
+- Preprocesador.py  &rarr; Modulo de limpieza y preparación de datos. Se encarga del filtrado, tratamiento de nulos, mapeo de etiquetas y de la partición segura del dataset
+- Clasificador.py   &rarr; Modulo de ML tradicional. Contiene el entrenamiento, balanceo y evaluación de los algoritmos clasicos.
+- generativa.py     &rarr; Pipeline de IA Generativa basado en LangChain y Ollama. Ejecuta la clasificacion de sentimientos, el aumento de datos sinteticos con filtro de duplicados y la evaluación.
+- Clustering.py     &rarr; Módulo de aprendizaje no supervisado. Aplica algoritmos de agrupamiento y modelado de tópicos para descubrir que temas especificos hablan los usuarios de las reseñas positivas y negativas
+- requirements.txt  &rarr; Dependencias
+- output/           &rarr; Resultados generados
+- clasificador.json &rarr; Configuración del modelo y preproceso
+- generativa.json   &rarr; Configuración del LLM
 
 ## Ayuda
 
-### Entrenamiento
+### Tradicional (Entrenamiento, Evaluar y Clustering)
 
 ```bash
 python Main.py --help
@@ -72,21 +71,6 @@ options:
   -v, --verbose         Muestra las metricas por la terminal
   --debug               Modo debug [Muestra informacion extra del preprocesado y almacena el resultado del mismo en un .csv]
   --config CONFIG       Archivo JSON de configuración
-```
-
-### Evaluación / Predicción
-
-```bash
-python ScriptEvaluar.py --help
-=== Predicción clasificador ===
-
-usage: ScriptEvaluar.py [-h] -f FILE -p PREDICTION [--debug]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -f FILE               Fichero csv (/Path_to_file)
-  -p PREDICTION         Columna objetivo
-  --debug               Modo debug
 ```
 
 ### Generativa (Clasificación / Aumento de datos / Evaluación)
@@ -109,23 +93,19 @@ options:
 
 ## Uso
 
-### Entrenamiento básico
+### Clasificación tradicional
 
+#### Entrenamiento
 ```bash
-python Main.py -f dataset.csv -p columna_objetivo
+python Main.py -f dataset.csv -p columna_objetivo -m "Train" -v --debug
 ```
 
-### Entrenamiento avanzado
+#### Predicción
 
 ```bash
-python Main.py -f dataset.csv -p columna_objetivo -c 4 -v --debug
+python Main.py -f dataset.csv -p columna_objetivo -m "Test" -v --debug
 ```
 
-### Predicción
-
-```bash
-python ScriptEvaluar.py -f dataset_test.csv -p columna_objetivo
-```
 ### Clasificación generativa
 ```bash
 python generativa.py --config generativa.json --sample -1 --shots 0 --data dataset.csv --mode classify
@@ -141,7 +121,7 @@ El aumento de datos generativo genera un archivo augmented.csv con las nuevas in
 
 ### Evaluación generativa
 ```bash
-python generativa.py --config generativa.json --sample -1 --shots 3 --data dataset.csv --mode data_augmentation --test_data datos_evaluar.csv
+python generativa.py --config generativa.json --sample -1 --shots 3 --data dataset.csv --mode evaluar --test_data datos_evaluar.csv
 ```
 La evaluación generativa genera un archivo test_predictions_[modelo].csv con la estructura de las instancias evaluadas y la prediccion realizada.
 
@@ -150,38 +130,69 @@ La evaluación generativa genera un archivo test_predictions_[modelo].csv con la
 ```json
 {
   "preprocessing": {
-    "unique_category_threshold": 10,      //Límite para considerar una columna categórica
-    "missing_values": "impute",           //Estrategia para missing values (impute, delete, none)
-    "impute_strategy": "most_frequent",   //Modo de imputación, para que aplique, la estrategia ha de ser "impute"(mean, median, most_frequent)
-    "scaling": "minMax",                  //Estrategia de escalado (minMax, standard, normalizer, maxAbs)
-    "text_process": "tf-idf",             //Estrategia de procesado de texto (tf-idf, bow)
-    "sampling": "oversampling",           //Estrategia de balanceo (oversampling, udnersampling, auto)
-    "drop_features": []                   //Columnas a eliminar
+    "unique_category_threshold": 10,      // Límite de valores distintos para tratar una columna como categórica
+    "missing_values": "delete",           // Estrategia para nulos (delete: elimina la fila, impute: rellena)
+    "impute_strategy": "mean",            // Imputación (mean, median, most_frequent)
+    "scaling": "minMax",                  // Escalado de variables numéricas (minMax: rango 0-1, standard: media 0 y std 1)
+    "cat2num": "ordinal",                 // Conversión de categorías a números (ordinal, one-hot)
+    "text_process": "tf-idf",             // Vectorización de texto (tf-idf, bow)
+    "sampling": "",                       // Balanceo de clases (oversampling, undersampling, auto)
+    "drop_features": ["reviewId", "location", "date", "gender"], // Columnas a excluir del entrenamiento
+    "lemmatization": "lem"                // Reducción de palabras a su raíz léxica
   },
-  "knn_config": {                         //*NOTA: si los array de enteros empiezan por -1: se genera un rango [-1, inicio, fin, paso]
-    "k": [-1, 0, 5, 1],                   //Número de vecinos (array de enteros)*
-    "p": [1, 2],                          //Distancia (1: Manhattan, 2: Euclídea)
-    "weights": ["uniform", "distance"],   //Peso (uniform, distance)
-    "pares": false                        //Permitir valores pares en k
+  
+  "knn_config": {                         //*NOTA: si empieza por -1: se genera rango [inicio, fin, paso]
+      "k": [-1, 1, 10, 1],                // Número de vecinos a evaluar
+      "p": [1, 2],                        // Métrica de distancia (1: Manhattan, 2: Euclídea)
+      "weights": ["uniform", "distance"], // Peso de los vecinos según cercanía
+      "pares": false                      // Permitir o evitar valores de K pares
   },
   "decision_tree_config": {
-    "criterion": ["gini", "entropy"],     //Criterio para las particiones (gini, entropy)
-    "max_depth": [-1, 4, 8, 1],           //Profundidad máxima (array de enteros)*
-    "min_samples_split": [2, 5, 10],      //Muestras mínimas para dividir (array de enteros)*
-    "min_samples_leaf": [1, 2, 4],        //Muestras mínimas por hoja (array de enteros)*
-    "max_features": ["sqrt", "log2"]      //Features máximas a considerar (sqrt, log2)
+      "criterion": ["gini", "entropy"],   // Función para medir la calidad de la división
+      "max_depth": [-1, 4, 8, 1],         // Profundidad máxima del árbol*
+      "min_samples_split": [2, 5, 10],    // Muestras mínimas para dividir un nodo interno
+      "min_samples_leaf": [1, 2, 4],      // Muestras mínimas requeridas en una hoja
+      "max_features": ["sqrt", "log2"]    // Número de variables a considerar para la mejor división
   },
   "rf_config": {
-    "n_estimators": [50, 100, 150],       //Número de árboles (array de enteros)*
-    "max_depth": [5, 10, null],           //Profundidad máxima (array de enteros)*
-    "min_samples_split": [2, 5, 10],      //Muestras mínimas para dividir (array de enteros)*
-    "min_samples_leaf": [1, 2, 4],        //Muestras mínimas por hoja (array de enteros)*
-    "bootstrap": [true, false],           //Uso de muestreo bootstrap (true, false)
-    "max_features": ["sqrt", "log2"]      //Features máximas a considerar (sqrt, log2)
+      "n_estimators": [50, 100, 150, 200, 500], // Número de árboles en el bosque
+      "max_depth": [5, 10, 20],           // Profundidad máxima de los árboles
+      "min_samples_split": [2, 5, 10],    // Muestras mínimas para dividir nodos
+      "min_samples_leaf": [1, 2, 4],      // Muestras mínimas en hojas
+      "bootstrap": [true, false],         // Selección de muestras (con o sin reemplazo)
+      "max_features": ["sqrt", "log2"]    // Variables máximas por árbol
   },
-  "test_size": "0.2",                     //Porcentaje para dividir la población
-  "algorithm": "knn",                     //Algoritmo clasificador (knn, decision_tree, random_forest)
-  "estimator": "f1_micro"                 //Métrica de optimización (f1_micro, f1_macro, f1_weighted, accuracy, recall, precision etc.)
+  "nb_config": {
+      "alpha": [0.001, 0.01, 0.1, 1.0],   // Parámetro de suavizado (Laplace/Lidstone)
+      "fit_prior": [true, false]          // Aprender o no las probabilidades a priori de las clases
+  },
+  "lr_config": {
+      "C": [0.01, 0.1, 0.4, 5, 10],       // Inversa de la fuerza de regularización (menor valor = mayor regularización)
+      "l1_ratio": [0, 0.5, 1],            // Mezcla ElasticNet (0: L2, 1: L1)
+      "solver": ["saga", "lbfgs"],        // Algoritmo de optimización
+      "max_iter": [5000, 10000]           // Número máximo de iteraciones para converger
+  },
+
+  "test_size": 0.15,                      // Porcentaje de datos para test final (evaluación ciega)
+  "dev_size": 0.15,                       // Porcentaje de datos para validación (ajuste de hiperparámetros)
+  "algorithm": "logistic_regression",     // Algoritmo clasificador seleccionado
+  "estimator": "f1_macro",                // Métrica de optimización principal
+
+  "clustering": {
+      "cluster": "lda",                   // Algoritmo de agrupamiento/temática (lda, nmf)
+      "textClustering": "content",        // Campo sobre el que se aplica el clustering
+
+      "lda": {
+        "num_topics": [5],                // Número de temas/grupos a identificar
+        "passes": [10, 20],               // Número de pasadas por el corpus durante el entrenamiento
+        "iterations": [100]               // Máximo de iteraciones en cada pasada
+      },
+      "nmf": {
+        "num_topics": [2, 3, 4, 5, 6],    // Número de temas a evaluar en NMF
+        "passes": [5, 10, 20],            // Repeticiones del proceso
+        "iterations": [50, 100, 200]      // Límite de iteraciones para la convergencia de matrices
+      }
+  }
 }
 ```
 ## generativa (JSON)
@@ -223,17 +234,32 @@ La evaluación generativa genera un archivo test_predictions_[modelo].csv con la
 
 ## Características del Proyecto
 
-- Preprocesamiento automático
-  - Missing values
-  - Escalado
-  - Texto (NLP con NLTK)
-  - Codificación categórica
-- Soporte para:
-  - kNN
-  - Decision Tree
-  - Random Forest
-- Búsqueda de hiperparámetros con GridSearchCV
-- Visualización:
-  - Matrzi de confusión
-  - Informe de clasificación
-  - Gráficas de rendimiento
+- **Preprocesamiento Automático** (`Preprocesador.py`)
+  - **Missing values**: Gestión de nulos mediante eliminación (`delete`) o imputación (`mean`, `median`, `most_frequent`).
+  - **Escalado**: Normalización de datos con `MinMaxScaler`, `StandardScaler`, `MaxAbsScaler` o `Normalizer`.
+  - **Texto (NLP)**: Limpieza avanzada con `NLTK` (eliminación de stop-words, puntuación) y técnicas de **Lemmatization** o **Stemming**.
+  - **Codificación categórica**: Transformación automática de etiquetas mediante `OrdinalEncoder` o `OneHotEncoder`.
+  - **Balanceo de datos**: Soporte para `SMOTE`, `Oversampling` y `Undersampling` a través de `imblearn`.
+
+- **Modelos de Clasificación Soportados** (`Clasificador.py`)
+  - **kNN** (K-Nearest Neighbors)
+  - **Decision Tree**
+  - **Random Forest**
+  - **Naive Bayes** (Multinomial)
+  - **Logistic Regression** (con soporte para solvers `SAGA` y `LBFGS`)
+
+- **Aprendizaje No Supervisado** (`Clustering.py`)
+  - **LDA** (Latent Dirichlet Allocation) para detección de temáticas.
+  - **NMF** (Non-negative Matrix Factorization) como alternativa de clustering.
+  - Análisis segmentado por sentimiento (positivo/negativo).
+
+- **IA Generativa y Aumentación** (`generativa.py`)
+  - Clasificación **Zero-shot** y **Few-shot** utilizando modelos locales vía **Ollama** (ej. `qwen2.5`, `gemma2`).
+  - **Data Augmentation**: Generación de muestras sintéticas mediante parafraseo para robustecer el entrenamiento.
+
+- **Optimización y Evaluación**
+  - Búsqueda de hiperparámetros mediante **GridSearchCV**.
+  - **Visualización**:
+    - Matriz de confusión.
+    - Informe detallado de clasificación (`Precision`, `Recall`, `F1-macro/micro`).
+    - Gráficas de métricas de coherencia y rendimiento.
