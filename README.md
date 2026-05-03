@@ -106,7 +106,7 @@ python Main.py -f dataset.csv -p columna_objetivo -m "Train" -v --debug
 python Main.py -f dataset.csv -p columna_objetivo -m "Test" -v --debug
 ```
 ### Clustering (LDA / NMF)
-# Nota: El algoritmo de clustering (LDA o NMF) y sus parámetros se configuran en `clasificador.json` dentro del apartado `"clustering"`.
+Nota: el algoritmo de clustering (LDA o NMF) y sus parámetros se configuran en `clasificador.json` dentro del apartado `"clustering"`.
 ```bash
 python Main.py -f dataset.csv -p columna_objetivo -m "Cluster" -v --debug
 ```
@@ -114,20 +114,20 @@ python Main.py -f dataset.csv -p columna_objetivo -m "Cluster" -v --debug
 ```bash
 python generativa.py --config generativa.json --sample -1 --shots 0 --data dataset.csv --mode classify
 ```
-La clasificacion generativa genera dos archivos en output/:
+La clasificación generativa genera dos archivos en output/:
 1. "reporte_generativo.csv" donde se guarda el nombre del modelo, parametros, prompts y resultados
 2. "logs_[modelo]_[parametros]" donde se guardan todas las entradas, salidas, el valor real y la respuesta cruda
 ### Aumento de datos generativa
 ```bash
 python generativa.py --config generativa.json --sample -1 --shots 0 --data dataset.csv --mode data_augmentation
 ```
-El aumento de datos generativo genera un archivo augmented.csv con las nuevas instancias sinteticas siguiendo la misma estructura del .csv de entrada
+El aumento de datos generativo genera un archivo augmented.csv con las nuevas instancias sintéticas siguiendo la misma estructura del .csv de entrada
 
 ### Evaluación generativa
 ```bash
 python generativa.py --config generativa.json --sample -1 --shots 3 --data dataset.csv --mode evaluar --test_data datos_evaluar.csv
 ```
-La evaluación generativa genera un archivo test_predictions_[modelo].csv con la estructura de las instancias evaluadas y la prediccion realizada.
+La evaluación generativa genera un archivo test_predictions_[modelo].csv con la estructura de las instancias evaluadas y la predicción realizada.
 
 ## clasificador (JSON)
 
@@ -246,7 +246,7 @@ La evaluación generativa genera un archivo test_predictions_[modelo].csv con la
   - **Balanceo de datos**: Soporte para `SMOTE`, `Oversampling` y `Undersampling` a través de `imblearn`.
 
 - **Modelos de Clasificación Soportados** (`Clasificador.py`)
-  - **kNN** (K-Nearest Neighbors)
+  - **KNN** (K-Nearest Neighbors)
   - **Decision Tree**
   - **Random Forest**
   - **Naive Bayes** (Multinomial)
@@ -255,9 +255,9 @@ La evaluación generativa genera un archivo test_predictions_[modelo].csv con la
 - **Aprendizaje No Supervisado** (`Clustering.py`)
   - **LDA** (Latent Dirichlet Allocation) para detección de temáticas.
   - **NMF** (Non-negative Matrix Factorization) como alternativa de clustering.
-  - Análisis segmentado por sentimiento (positivo/negativo).
+  - Análisis por sentimiento (positivo/negativo).
 
-- **IA Generativa y Aumentación** (`generativa.py`)
+- **IA Generativa y Aumento** (`generativa.py`)
   - Clasificación **Zero-shot** y **Few-shot** utilizando modelos locales vía **Ollama** (ej. `qwen2.5`, `gemma2`).
   - **Data Augmentation**: Generación de muestras sintéticas mediante parafraseo para robustecer el entrenamiento.
 
@@ -265,5 +265,5 @@ La evaluación generativa genera un archivo test_predictions_[modelo].csv con la
   - Búsqueda de hiperparámetros mediante **GridSearchCV**.
   - **Visualización**:
     - Matriz de confusión.
-    - Informe detallado de clasificación (`Precision`, `Recall`, `F1-macro/micro`).
+    - Informe detallado de clasificación (`Precision`, `Recall`, `F1-macro/micro`...).
     - Gráficas de métricas de coherencia y rendimiento.
