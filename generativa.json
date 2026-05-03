@@ -1,11 +1,11 @@
 {
   "model": {
-    "model": "gemma2:2b",
-    "temperature": 0.0,
-    "num_predict": 10,
-    "top_k": 10,
-    "top_p": 0.5,
-    "stop": []},
+    "model": "qwen2.5:7b",
+    "temperature": 0.6,
+    "num_predict": 80,
+    "top_k": 40,
+    "top_p": 0.85,
+    "stop": ["\n\n","Review:","User:","New version:"]},
 
   "settings": {
     "prompt_zeroshot": "Classify the following review about TIKTOK using only one of the following words [positive, neutral, negative], remember to use ONLY ONE WORD\n    Text:{texto_nuevo}\n    Classification:",

@@ -226,7 +226,12 @@ def aumento_datos(config):
         args.debug = False
 
     preprocesador = DataPreprocessor(args)
-    train, _, _ = preprocesador.preprocesar_datos_generativo()
+    train, dev, test = preprocesador.preprocesar_datos_generativo()
+    print("\n[DEBUG] Puntuaciones en TRAIN:")
+    print(train[args.prediction].value_counts(dropna=False))
+    print("\n[DEBUG] Puntuaciones en DEV:")
+    print(dev[args.prediction].value_counts(dropna=False))
+    print("-----------------------------------")
     train['clase_final'] = train[args.prediction].astype(str).map(
         {'1': 'negative', '2': 'negative', '3': 'neutral', '4': 'positive', '5': 'positive'}
     )
@@ -295,7 +300,7 @@ def aumento_datos(config):
             while intentos<max_intentos and not exito:
                 try:
                     inputs_llm = {
-                        "texto": fila_original['content'],
+                        "texto": str(fila_original['content']),
                         "etiqueta": cat
                     }
 
@@ -309,7 +314,7 @@ def aumento_datos(config):
                     #print(fila_original['content'])
                     texto_limpio = parrafo.lower()
 
-                    if texto_limpio != fila_original['content'].lower() and len(parrafo) > 5 and texto_limpio not in textos_generados:
+                    if texto_limpio != str(fila_original['content']).lower() and len(parrafo) > 5 and texto_limpio not in textos_generados:
                         exito = True
                         textos_generados.add(texto_limpio)
                     else:
