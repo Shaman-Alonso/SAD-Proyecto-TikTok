@@ -262,6 +262,8 @@ def aumento_datos(config):
 
     nuevas_filas = []
 
+    textos_generados = set()
+
     limite_multiplicador=2
     #Iteramos sobre la clase
     for cat in clases_a_aumentar:
@@ -305,11 +307,14 @@ def aumento_datos(config):
                         inputs_llm["ejemplos_dinamicos"] = texto_ejemplos
                     parrafo = chain.invoke(inputs_llm).strip()
                     #print(fila_original['content'])
-                    if parrafo.lower() != fila_original['content'].lower() and len(parrafo)>5:
+                    texto_limpio = parrafo.lower()
+
+                    if texto_limpio != fila_original['content'].lower() and len(parrafo) > 5 and texto_limpio not in textos_generados:
                         exito = True
+                        textos_generados.add(texto_limpio)
                     else:
                         intentos += 1
-                        tqdm.write(f"[!] Intento {intentos}: Texto identico generado, reintentando...")
+                        tqdm.write(f"[!] Intento {intentos}: Texto identico generado, muy corto o duplicado, reintentando...")
                 except Exception as e:
                     tqdm.write(f"Error generando: {e}")
             if not exito:
