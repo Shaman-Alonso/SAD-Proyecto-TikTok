@@ -50,6 +50,17 @@ pip install -r requirements.txt
 - clasificador.json &rarr; Configuración del modelo y preproceso
 - generativa.json   &rarr; Configuración del LLM
 
+## Librerías
+
+* **Pandas & Numpy**: para el procesamiento y manipulación de datos tabulares y numéricos.
+* **Scikit-Learn**: para la arquitectura de Machine Learning, desde el escalado hasta algoritmos.
+* **NLTK**: para el procesamiento de lenguaje natural (NLP): limpieza, tokenización y lematización.
+* **Imbalanced-Learn (imblearn)**: para el balanceo de clases mediante técnicas como SMOTE.
+* **Gensim**: para Topic Modeling mediante LDA y NMF.
+* **LangChain & LangChain-Ollama**: para la integración de LLMs locales.
+* **Matplotlib**: para visualizaciones estadísticas y métricas de rendimiento.
+* **Colorama & TQDM**: para la interfaz de usuario en terminal (colores y barras de progreso).
+
 ## Ayuda
 
 ### Tradicional (Entrenamiento, Evaluar y Clustering)
