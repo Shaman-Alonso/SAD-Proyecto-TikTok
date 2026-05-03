@@ -20,6 +20,7 @@ parser.add_argument('--sample', type=int, default=-1, help='Numero de filas a ev
 parser.add_argument('--shots',type=int,default=0,help='Numero de ejemplos')
 parser.add_argument('--data',type=str,help='Ruta al archivo CSV')
 parser.add_argument('--mode',type=str,help='Modos: clasificacion o generacion')
+parser.add_argument('--test_data', type=str, default='', help='Ruta al archivo CSV de test')
 args=parser.parse_args()
 
 def main():
@@ -34,7 +35,9 @@ def main():
         clasificar(config)
     elif modo == 'data_augmentation':
         aumento_datos(config)
-    else: raise ValueError("Introduzca uno de los dos modos del scritpt 'classify|data_augmentation'")
+    elif modo == 'evaluar':
+        evaluar(config)
+    else: raise ValueError("Introduzca uno de los tres modos del scritpt 'classify|data_augmentation'")
 
 def clasificar(config):
     with open("clasificador.json", "r") as f:
@@ -339,6 +342,185 @@ def aumento_datos(config):
         df_final.to_csv(ruta, index=False, encoding='utf-8')
         print(f"Proceso finalizado. Archivo guardado con {len(df_final)} filas sinteticas.")
     return
+
+#Funcion de evaluacion
+def evaluar(config):
+    print("\n--- Iniciando Evaluación Final (Test Secreto) ---")
+    with open("clasificador.json", "r") as f:
+        config_global = json.load(f)
+    for clave, valor in config_global.items():
+        setattr(args, clave, valor)
+
+    args.prediction = "score"
+    if not hasattr(args, "file"):
+        args.file = args.data
+    if not hasattr(args, "debug"):
+        args.debug = False
+
+    if not args.test_data:
+        print(
+            "[ERROR] Para el modo 'evaluar' debes proporcionar el archivo de test usando --test_data")
+        return
+    #Obtener ejemplos del dataset original
+    print("\n Extrayendo ejemplos del dataset original")
+    preprocesador = DataPreprocessor(args)
+    train,_,_ = preprocesador.preprocesar_datos_generativo()
+    print(f"Cargando test: {args.test_data}")
+    df_test = pd.read_csv(args.test_data)
+    total_instancias = len(df_test) if args.sample == -1 else min(args.sample, len(df_test))
+
+    test_tiene_score = args.prediction in df_test.columns
+    if not test_tiene_score:
+        print(f"El test no contiene la columna real. Solo se generan predicciones")
+    else:
+        print(f"El test contiene la etiqueta real, Se calcularán las metricas")
+
+    #Configuración del modelo
+    parametros = config['model']
+    llm = OllamaLLM(model=parametros['model'],temperature=parametros['temperature'],num_predict=parametros['num_predict'],top_k=parametros['top_k'],top_p=parametros['top_p'],stop=parametros['stop']) #determinista
+
+    if args.shots == 0:
+        template_str = config['settings']['prompt_zeroshot']
+        prompt = PromptTemplate(template=template_str, input_variables=["texto_nuevo"])
+    else:
+        prefix = config['settings']['prompt_fewshot_prefix']
+        suffix = config['settings']['prompt_fewshot_suffix']
+        pool_para_funcion = []
+        train_limpio = train.dropna(subset=['content', args.prediction])
+        for _, row in train_limpio.iterrows():
+            texto = str(row['content']).strip()
+            valor = str(row[args.prediction]).strip()
+
+            if valor in ['1', '2']:
+                cat = 'negative'
+            elif valor == '3':
+                cat = 'neutral'
+            elif valor in ['4', '5']:
+                cat = 'positive'
+            else:
+                continue
+            pool_para_funcion.append({'review': texto, 'categoria': cat})
+
+        lista_ejemplos = obtener_ejemplos_balanceados(pool_para_funcion, args.shots)
+        plantilla_ejemplo = PromptTemplate(
+            input_variables=["review", "categoria"],
+            template="Review: {review}\nClassification: {categoria}"
+        )
+        prompt = FewShotPromptTemplate(
+            examples=lista_ejemplos,
+            example_prompt=plantilla_ejemplo,
+            prefix=prefix,
+            suffix=suffix,
+            input_variables=["texto_nuevo"]
+        )
+
+    chain = prompt | llm
+
+    #Prediccion
+    ok = 0
+    wrongOut = 0
+    y_true = []
+    y_pred = []
+    log_predicciones = []
+    for paso,(indice_original,row) in enumerate(tqdm(df_test.iterrows(),total=total_instancias,desc="Evaluando test")):
+        if paso == args.sample:
+            break
+        #Comprobacion de na
+        texto_crudo = row['content']
+        if pd.isna(texto_crudo) or str(texto_crudo).strip() == "":
+            ans_raw = "ERROR: Texto vacío o NaN"
+            ans = "neutral"  # Ante la duda absoluta, predecimos neutral
+
+            # Saltamos la llamada al LLM y vamos directos a guardar
+            etiqueta_real = "desconocida"
+            if test_tiene_score:
+                valor_crudo = row[args.prediction]
+                if pd.isna(valor_crudo):
+                    etiqueta_real = "NaN"
+                elif str(valor_crudo).strip() in ['1', '2']:
+                    etiqueta_real = "negative"
+                elif str(valor_crudo).strip() == '3':
+                    etiqueta_real = "neutral"
+                elif str(valor_crudo).strip() in ['4', '5']:
+                    etiqueta_real = "positive"
+                else:
+                    etiqueta_real = "neutral"
+
+                # Omitimos sumar 'ok' o calcular acc aquí para no falsear las métricas
+                mensaje_consola = f"| N: {paso + 1} | Out: IGNORADO | Pred: {ans} | Real: {etiqueta_real} | (Texto Vacío)"
+            else:
+                mensaje_consola = f"| N: {paso + 1} | Out: IGNORADO | Pred: {ans} | (Texto Vacío)"
+
+            y_pred.append(ans)
+            if test_tiene_score: y_true.append(etiqueta_real)
+
+            fila_log = row.to_dict()
+            fila_log['LLM_Prediction'] = ans
+            fila_log['LLM_Raw_Output'] = ans_raw
+            log_predicciones.append(fila_log)
+            tqdm.write(mensaje_consola)
+
+            continue
+
+        texto_entrada = str(row['content'])
+        etiqueta_real = "desconocida"
+        if test_tiene_score:
+            valor = str(row[args.prediction]).strip()
+            if valor in ['1', '2']:
+                etiqueta_real = "negative"
+            elif valor == '3':
+                etiqueta_real = "neutral"
+            elif valor in ['4', '5']:
+                etiqueta_real = "positive"
+            else:
+                etiqueta_real = "neutral"
+
+        # Predicción del LLM
+        ans_raw = chain.invoke({'texto_nuevo': texto_entrada}).strip().lower()
+
+        ans = "error"
+        if "positive" in ans_raw:
+            ans = "positive"
+        elif "negative" in ans_raw:
+            ans = "negative"
+        elif "neutral" in ans_raw:
+            ans = "neutral"
+        else:
+            wrongOut += 1
+            ans = "neutral"
+
+        if test_tiene_score:
+            if ans == etiqueta_real: ok += 1
+            acc = round(100 * ok / (paso + 1), 2)
+            y_true.append(etiqueta_real)
+            mensaje_consola = f"| N: {paso + 1} | Acc: {acc}% | Out: {wrongOut} | Pred: {ans} | Real: {etiqueta_real} |"
+        else:
+            mensaje_consola = f"| N: {paso + 1} | Out: {wrongOut} | Pred: {ans} |"
+
+        y_pred.append(ans)
+
+        fila_log = row.to_dict()
+        fila_log['LLM_Prediction'] = ans
+        fila_log['LLM_Raw_Output'] = ans_raw
+        log_predicciones.append(fila_log)
+
+        tqdm.write(mensaje_consola)
+
+    print("-"*80)
+    print("Evaluación finalizada!")
+
+    if test_tiene_score:
+        from sklearn.metrics import accuracy_score, f1_score, classification_report
+        print(f"Accuracy final en Test: {round(accuracy_score(y_true, y_pred) * 100, 2)}")
+        print(f"F1-macro final en Test: {round(f1_score(y_true, y_pred, average='macro', zero_division=0) * 100, 2)}")
+        print("Reporte detallado:")
+        print(classification_report(y_true, y_pred, zero_division=0))
+    os.makedirs('output', exist_ok=True)
+    df_resultados = pd.DataFrame(log_predicciones)
+    ruta_salida = f"output/test_predictions_{parametros.get('model').replace(':', '_')}.csv"
+    df_resultados.to_csv(ruta_salida, index=False)
+    print(f"\nPredicciones guardadas en: {ruta_salida}")
+
 
 #Funciones auxiliares
 def obtener_ejemplos_balanceados(pool,nums_shots):
